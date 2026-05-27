@@ -1,0 +1,128 @@
+name: Node CI
+
+# Reusable CI workflow for Caracal Lynx TypeScript/Node packages.
+# Consumer-facing inputs are documented below; see ../../README.md for usage.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version (matches package.json engines.node lower bound)
+        type: string
+        default: "24.16.0"
+      os-matrix:
+        description: JSON array of runner OS labels for the test matrix
+        type: string
+        default: '["ubuntu-latest", "windows-latest"]'
+      package-manager:
+        description: Package manager — "npm" or "pnpm"
+        type: string
+        default: npm
+      coverage:
+        description: Generate coverage report (uploads as artifact)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - name: Install dependencies
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+      - name: Run lint
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm lint' || 'npm run lint' }}
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - name: Install dependencies
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+      - name: Run typecheck
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm typecheck' || 'npm run typecheck' }}
+
+  test:
+    name: Test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.os-matrix) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - name: Install dependencies
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+      - name: Run tests
+        run: ${{ inputs.coverage && (inputs.package-manager == 'pnpm' && 'pnpm test:cov' || 'npm run test:cov') || (inputs.package-manager == 'pnpm' && 'pnpm test' || 'npm test') }}
+      - name: Upload coverage
+        if: inputs.coverage && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: coverage/
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - name: Install dependencies
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+      - name: Build
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm build' || 'npm run build' }}
+      - name: Assert dist is non-empty
+        shell: bash
+        run: |
+          if [ ! -d dist ] || [ -z "$(ls -A dist 2>/dev/null)" ]; then
+            echo "::error::dist/ is empty or missing after build"
+            exit 1
+          fi
+          echo "dist/ contents: $(find dist -type f | wc -l) files"
+
+  security:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+      - name: npm audit (high + critical only)
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --audit-level=high' || 'npm audit --audit-level=high' }}

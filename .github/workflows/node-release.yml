@@ -1,0 +1,106 @@
+name: Node Release
+
+# Reusable release workflow for Caracal Lynx TypeScript/Node packages.
+# Implements the Changesets PR-flow: push to main/master either opens
+# a "Version Packages" PR, or — when that PR merges — publishes to npm
+# via Trusted Publishing (OIDC, no NPM_TOKEN).
+#
+# Linear release sync (linear-release-action) is wired separately per
+# consumer once DAG-58 (beta access) lands.
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: Node.js version (matches package.json engines.node lower bound)
+        type: string
+        default: "24.16.0"
+      package-manager:
+        description: Package manager — "npm" or "pnpm"
+        type: string
+        default: npm
+      release-commit-message:
+        description: Commit message used by the changesets PR (house style is `[master] - ...`)
+        type: string
+        default: "[master] - chore(release): version packages"
+      release-pr-title:
+        description: Title of the auto-created release PR
+        type: string
+        default: "chore(release): version packages"
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check App token prerequisites
+        id: preflight
+        shell: bash
+        run: |
+          if [[ -n "$APP_ID" && -n "$PRIVATE_KEY" ]]; then
+            echo "use_app_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "use_app_token=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::RELEASER_APP_ID or RELEASER_PRIVATE_KEY not configured — falling back to GITHUB_TOKEN. Release PRs may require manual approval before CI can run on them."
+          fi
+        env:
+          APP_ID: ${{ vars.RELEASER_APP_ID }}
+          PRIVATE_KEY: ${{ secrets.RELEASER_PRIVATE_KEY }}
+
+      - name: Mint caracal-lynx-releaser App token
+        id: app-token
+        if: steps.preflight.outputs.use_app_token == 'true'
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0      # required: changesets walks git history
+          token: ${{ steps.app-token.outputs.token || github.token }}
+
+      - uses: pnpm/action-setup@v4
+        if: inputs.package-manager == 'pnpm'
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          registry-url: https://registry.npmjs.org
+
+      - name: Install dependencies
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+
+      - name: Build
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm build' || 'npm run build' }}
+
+      - name: Test
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm test' || 'npm test' }}
+
+      - name: Create release PR or publish
+        uses: changesets/action@v1
+        with:
+          publish: ${{ inputs.package-manager == 'pnpm' && 'pnpm release' || 'npm run release' }}
+          version: ${{ inputs.package-manager == 'pnpm' && 'pnpm version' || 'npm run version' }}
+          commit: ${{ inputs.release-commit-message }}
+          title: ${{ inputs.release-pr-title }}
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          NPM_CONFIG_PROVENANCE: true
+          # Authentication via npm Trusted Publishing (OIDC).
+          # NO NPM_TOKEN — Classic Automation tokens were retired in Nov 2025;
+          # Trusted Publishing is the recommended path for CI publishing.
+          # Each package must configure Trusted Publishers at
+          # npmjs.com/package/<name>/access to authorise this workflow by
+          # org + repo + filename. The `id-token: write` permission above
+          # provides the OIDC token at publish time.

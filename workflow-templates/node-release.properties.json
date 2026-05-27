@@ -1,0 +1,7 @@
+{
+  "name": "Caracal Lynx — Node Release",
+  "description": "Changesets PR-flow release for a Caracal Lynx Node/TypeScript package. Calls the org's reusable node-release.yml; publishes to npm via Trusted Publishing (OIDC).",
+  "iconName": "rocket",
+  "categories": ["Deployment", "Node"],
+  "filePatterns": ["package.json$", "\\.changeset/.*"]
+}

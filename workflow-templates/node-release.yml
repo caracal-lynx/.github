@@ -1,0 +1,14 @@
+name: Release
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+jobs:
+  release:
+    uses: caracal-lynx/.github/.github/workflows/node-release.yml@main
+    with:
+      node-version: "24.16.0"
+      package-manager: npm
+    secrets: inherit
