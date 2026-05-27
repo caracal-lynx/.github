@@ -1,0 +1,15 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  ci:
+    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@main
+    with:
+      node-version: "24.16.0"
+      os-matrix: '["ubuntu-latest", "windows-latest"]'
+      package-manager: npm
+      coverage: false

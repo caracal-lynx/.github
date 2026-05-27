@@ -1,0 +1,17 @@
+# CODEOWNERS for caracal-lynx/.github
+#
+# This file governs PR-review ownership for THIS repo only. GitHub does
+# not support org-wide CODEOWNERS — each consuming repo needs its own
+# CODEOWNERS file (see ../docs/codeowners-template.md for a starting point).
+#
+# Syntax: <pattern> <owner-1> <owner-2> ...
+# Last matching rule wins.
+
+# Default: Michael owns everything in this repo
+*                                   @michaelscott-1963
+
+# Reusable workflows — extra-careful review, same owner for now
+/.github/workflows/                 @michaelscott-1963
+
+# Renovate preset — changes here ripple across every consuming repo
+/renovate-config.json               @michaelscott-1963

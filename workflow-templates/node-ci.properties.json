@@ -1,0 +1,7 @@
+{
+  "name": "Caracal Lynx — Node CI",
+  "description": "Lint, typecheck, test (matrix Ubuntu + Windows), build, and audit for a Caracal Lynx Node/TypeScript package. Calls the org's reusable node-ci.yml.",
+  "iconName": "node",
+  "categories": ["Continuous integration", "Node"],
+  "filePatterns": ["package.json$"]
+}
