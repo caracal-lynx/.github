@@ -26,6 +26,13 @@ on:
 permissions:
   contents: read
 
+# Interim: run JS actions that still declare node20 (e.g. pnpm/action-setup@v4)
+# under Node 24, ahead of GitHub's 2026-06-16 forced default. Silences the
+# deprecation warnings and validates Node 24 compatibility early. Remove once
+# pnpm/action-setup ships a node24 release (Renovate-managed bump). See DAG-142.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -120,9 +127,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v4
         if: inputs.package-manager == 'pnpm'
+      # No cache on this job: it runs only `audit` (no install), so there is no
+      # package-manager store to cache. With pnpm the setup-node cache-save step
+      # then errors on a cold store ("Path Validation Error") and fails the job.
+      # See DAG-141.
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
       - name: npm audit (high + critical only)
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --audit-level=high' || 'npm audit --audit-level=high' }}
