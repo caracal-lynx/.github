@@ -43,7 +43,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: inputs.package-manager == 'pnpm'
       - uses: actions/setup-node@v6
         with:
@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: inputs.package-manager == 'pnpm'
       - uses: actions/setup-node@v6
         with:
@@ -79,7 +79,7 @@ jobs:
         os: ${{ fromJSON(inputs.os-matrix) }}
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: inputs.package-manager == 'pnpm'
       - uses: actions/setup-node@v6
         with:
@@ -101,7 +101,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: inputs.package-manager == 'pnpm'
       - uses: actions/setup-node@v6
         with:
@@ -125,7 +125,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: inputs.package-manager == 'pnpm'
       # No cache on this job: it runs only `audit` (no install), so there is no
       # package-manager store to cache. With pnpm the setup-node cache-save step

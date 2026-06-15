@@ -76,7 +76,7 @@ jobs:
           fetch-depth: 0      # required: changesets walks git history
           token: ${{ steps.app-token.outputs.token || github.token }}
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: inputs.package-manager == 'pnpm'
 
       - uses: actions/setup-node@v6
@@ -97,8 +97,12 @@ jobs:
       - name: Create release PR or publish
         uses: changesets/action@v1
         with:
-          publish: ${{ inputs.package-manager == 'pnpm' && 'pnpm release' || 'npm run release' }}
-          version: ${{ inputs.package-manager == 'pnpm' && 'pnpm version' || 'npm run version' }}
+          # Use `pnpm run <script>`, not `pnpm <script>`: `version` is a built-in
+          # pnpm command (bump-the-version, needs a semver arg) so bare `pnpm version`
+          # fails with ERR_PNPM_INVALID_VERSION_BUMP and never runs the package script.
+          # `release` is not reserved, but keep it symmetric for safety.
+          publish: ${{ inputs.package-manager == 'pnpm' && 'pnpm run release' || 'npm run release' }}
+          version: ${{ inputs.package-manager == 'pnpm' && 'pnpm run version' || 'npm run version' }}
           commit: ${{ inputs.release-commit-message }}
           title: ${{ inputs.release-pr-title }}
         env:
