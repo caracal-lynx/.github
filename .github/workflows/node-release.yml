@@ -33,13 +33,6 @@ permissions:
   pull-requests: write
   id-token: write
 
-# Interim: run JS actions that still declare node20 (e.g. pnpm/action-setup@v4)
-# under Node 24, ahead of GitHub's 2026-06-16 forced default. Silences the
-# deprecation warnings and validates Node 24 compatibility early. Remove once
-# pnpm/action-setup ships a node24 release (Renovate-managed bump). See DAG-142.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
-
 concurrency:
   group: release-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
