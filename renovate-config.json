@@ -8,7 +8,7 @@
   "dependencyDashboard": true,
   "labels": ["dependencies"],
   "rangeStrategy": "bump",
-  "platformAutomerge": false,
+  "platformAutomerge": true,
   "prHourlyLimit": 4,
   "prConcurrentLimit": 10,
 
