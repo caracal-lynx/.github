@@ -127,8 +127,14 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: ${{ inputs.node-version }}
-      - name: npm audit (high + critical only)
-        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --audit-level=high' || 'npm audit --audit-level=high' }}
+      - name: npm audit — production dependencies (blocking)
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --prod --audit-level=high' || 'npm audit --omit=dev --audit-level=high' }}
+      - name: npm audit — full dependency tree (report-only, non-blocking)
+        # Dev/build-tool CVEs are surfaced here for visibility (and tracked by
+        # Renovate vulnerabilityAlerts) but do NOT block releases — only vulns
+        # in shipped/production deps gate. See DAG-67.
+        if: always()
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --audit-level=high || true' || 'npm audit --audit-level=high || true' }}
 
   ci-success:
     name: CI success
