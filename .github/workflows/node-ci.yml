@@ -26,6 +26,10 @@ on:
         description: Run the build job. Set false for config-driven app repos with no build/dist step.
         type: boolean
         default: true
+      require-changeset:
+        description: Require a Changesets entry on PRs that modify src/. Set true for published libraries. See DAG-63.
+        type: boolean
+        default: false
     secrets:
       NPM_READ_TOKEN:
         required: false
@@ -157,13 +161,51 @@ jobs:
         if: always()
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --audit-level=high || true' || 'npm audit --audit-level=high || true' }}
 
+  changeset-required:
+    name: Changeset required
+    # Gates src/ changes on a Changesets entry for published libraries. Skipped
+    # unless the consumer sets require-changeset: true. See DAG-63.
+    if: ${{ inputs.require-changeset && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v6
+        if: inputs.package-manager == 'pnpm'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          registry-url: https://registry.npmjs.org
+      - name: Install dependencies
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
+      - name: Verify a changeset is present when src/ is modified
+        shell: bash
+        env:
+          PM: ${{ inputs.package-manager }}
+          BASE: ${{ github.base_ref }}
+        run: |
+          if git diff --name-only "origin/${BASE}...HEAD" | grep -qE '^src/'; then
+            echo "src/ changed — a changeset is required."
+            if [ "$PM" = "pnpm" ]; then
+              pnpm exec changeset status --since="origin/${BASE}" --verbose
+            else
+              npx --no-install changeset status --since="origin/${BASE}" --verbose
+            fi
+          else
+            echo "No src/ changes — changeset not required."
+          fi
+
   ci-success:
     name: CI success
     # Single stable status check for branch-protection rulesets: green only when
     # every CI job above succeeded. Lets org rulesets require one context
     # ("ci / CI success") instead of brittle per-job/matrix names. See DAG-67.
     if: always()
-    needs: [lint, typecheck, test, build, security]
+    needs: [lint, typecheck, test, build, security, changeset-required]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job did not succeed
