@@ -26,6 +26,10 @@ on:
         description: Run the build job. Set false for config-driven app repos with no build/dist step.
         type: boolean
         default: true
+    secrets:
+      NPM_READ_TOKEN:
+        required: false
+        description: npm granular read token for installing restricted @caracal-lynx packages. Optional — public-only repos do not need it.
 
 permissions:
   contents: read
@@ -46,8 +50,11 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
+          registry-url: https://registry.npmjs.org
       - name: Install dependencies
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
       - name: Run lint
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm lint' || 'npm run lint' }}
 
@@ -62,8 +69,11 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
+          registry-url: https://registry.npmjs.org
       - name: Install dependencies
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
       - name: Run typecheck
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm typecheck' || 'npm run typecheck' }}
 
@@ -82,8 +92,11 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
+          registry-url: https://registry.npmjs.org
       - name: Install dependencies
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
       - name: Run tests
         run: ${{ inputs.coverage && (inputs.package-manager == 'pnpm' && 'pnpm test:cov' || 'npm run test:cov') || (inputs.package-manager == 'pnpm' && 'pnpm test' || 'npm test') }}
       - name: Upload coverage
@@ -105,8 +118,11 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
+          registry-url: https://registry.npmjs.org
       - name: Install dependencies
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
       - name: Build
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm build' || 'npm run build' }}
       - name: Assert dist is non-empty
