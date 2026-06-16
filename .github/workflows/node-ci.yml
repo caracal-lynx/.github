@@ -21,7 +21,10 @@ on:
       coverage:
         description: Generate coverage report (uploads as artifact)
         type: boolean
-        default: false
+        default: false      run-build:
+        description: Run the build job. Set false for config-driven app repos with no build/dist step.
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -91,6 +94,7 @@ jobs:
 
   build:
     name: Build
+    if: ${{ inputs.run-build }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
