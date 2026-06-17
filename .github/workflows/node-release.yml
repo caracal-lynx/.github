@@ -23,6 +23,10 @@ on:
         description: Emit npm provenance attestation. MUST be false for packages with publishConfig.access=restricted (npm rejects provenance on private packages and it would leak metadata to the public sigstore log).
         type: boolean
         default: true
+      npm-read-auth:
+        description: For private (publishConfig.access=restricted) packages, authenticate npm reads with NPM_READ_TOKEN so changesets' `npm info` precheck can see already-published versions. Without it, npm returns 404 for a private package to an unauthenticated client, so changesets believes the version is unpublished, tries to republish it, and crashes. The actual publish still uses OIDC Trusted Publishing — npm prefers OIDC over a configured token (needs npm >= 11.5.1), so this read token does not interfere. Leave false for public packages (their `npm info` works unauthenticated). See DAG-156.
+        type: boolean
+        default: false
       release-commit-message:
         description: Commit message used by the changesets PR (house style is `[master] - ...`)
         type: string
@@ -105,8 +109,14 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           NPM_CONFIG_PROVENANCE: ${{ inputs.provenance }}
-          # Authentication via npm Trusted Publishing (OIDC).
-          # NO NPM_TOKEN — Classic Automation tokens were retired in Nov 2025;
+          # Private packages only (npm-read-auth: true): a READ token so changesets'
+          # `npm info` precheck can see existing versions of a restricted package.
+          # Empty for public packages. This is NOT publish auth — npm prefers OIDC
+          # Trusted Publishing over a configured token, so the publish below still
+          # goes via OIDC. See DAG-156.
+          NODE_AUTH_TOKEN: ${{ inputs.npm-read-auth && secrets.NPM_READ_TOKEN || '' }}
+          # Publish authentication via npm Trusted Publishing (OIDC).
+          # NO publish NPM_TOKEN — Classic Automation tokens were retired in Nov 2025;
           # Trusted Publishing is the recommended path for CI publishing.
           # Each package must configure Trusted Publishers at
           # npmjs.com/package/<name>/access to authorise this workflow by
