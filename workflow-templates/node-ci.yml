@@ -1,15 +1,23 @@
 name: CI
 
+# Starter for the org-wide reusable Node CI workflow (caracal-lynx/.github).
+# secrets: inherit passes NPM_READ_TOKEN so CI can install restricted
+# @caracal-lynx dependencies. Harmless for public-only repos.
+
 on:
   push:
     branches: [master, main]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   ci:
-    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@main
+    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.6.0
     with:
       node-version: "24.16.0"
       os-matrix: '["ubuntu-latest", "windows-latest"]'
-      package-manager: npm
+      package-manager: pnpm
       coverage: false
+    secrets: inherit

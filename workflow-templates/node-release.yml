@@ -1,14 +1,31 @@
 name: Release
 
+# Starter for the org-wide reusable Node release workflow (caracal-lynx/.github).
+# Defaults to a PRIVATE (publishConfig.access=restricted) package — the org norm.
+#
+# For a PUBLIC package, drop the two lines marked "restricted" below: provenance
+# then defaults to true (npm provenance attestation) and npm-read-auth to false
+# (a public package's `npm info` precheck works unauthenticated).
+#
+# NB: a restricted package needs a one-time bootstrap publish + GitHub Actions
+# Trusted Publisher before this workflow can publish. See DAG-157.
+
 on:
   push:
     branches: [master, main]
   workflow_dispatch:
 
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
 jobs:
   release:
-    uses: caracal-lynx/.github/.github/workflows/node-release.yml@main
+    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.6.0
     with:
       node-version: "24.16.0"
-      package-manager: npm
+      package-manager: pnpm
+      provenance: false   # restricted: npm rejects provenance on private packages
+      npm-read-auth: true # restricted: authenticate the changesets `npm info` precheck (DAG-156)
     secrets: inherit
