@@ -26,6 +26,14 @@ on:
         description: Run the build job. Set false for config-driven app repos with no build/dist step.
         type: boolean
         default: true
+      run-typecheck:
+        description: Run the typecheck job. Set false for repos with no typecheck script (e.g. pure-config packages).
+        type: boolean
+        default: true
+      run-test:
+        description: Run the test job. Set false for repos with no test suite.
+        type: boolean
+        default: true
       require-changeset:
         description: Require a Changesets entry on PRs that modify src/. Set true for published libraries. See DAG-63.
         type: boolean
@@ -64,6 +72,7 @@ jobs:
 
   typecheck:
     name: Typecheck
+    if: ${{ inputs.run-typecheck }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -83,6 +92,7 @@ jobs:
 
   test:
     name: Test (${{ matrix.os }})
+    if: ${{ inputs.run-test }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
