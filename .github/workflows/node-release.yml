@@ -19,6 +19,10 @@ on:
         description: Package manager — "npm" or "pnpm"
         type: string
         default: npm
+      run-build:
+        description: Run the build step before publishing. Set false for pure-config packages with no build/dist step. Tests always run. Mirrors node-ci's run-build (DAG-158).
+        type: boolean
+        default: true
       provenance:
         description: Emit npm provenance attestation. MUST be false for packages with publishConfig.access=restricted (npm rejects provenance on private packages and it would leak metadata to the public sigstore log).
         type: boolean
@@ -90,6 +94,7 @@ jobs:
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
 
       - name: Build
+        if: ${{ inputs.run-build }}
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm build' || 'npm run build' }}
 
       - name: Test
