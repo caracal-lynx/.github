@@ -80,6 +80,14 @@ jobs:
   these the workflow falls back to `GITHUB_TOKEN`, which means release PRs
   may need manual approval before CI can run on them.
 
+**Registry read auth:** both `node-ci.yml` and `node-release.yml` always pass
+the inherited `NPM_READ_TOKEN` to every install/precheck step, so restricted
+`@caracal-lynx/*` dependencies resolve without per-repo configuration. It is
+empty and harmless when the org has no such secret, and the publish itself
+still authenticates via OIDC Trusted Publishing. The legacy `npm-read-auth`
+input on `node-release.yml` is a deprecated no-op kept only for backward
+compatibility (DAG-162).
+
 ### Renovate preset
 
 In each repo's `.github/renovate.json`:
