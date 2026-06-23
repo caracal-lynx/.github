@@ -28,7 +28,7 @@ on:
         type: boolean
         default: true
       npm-read-auth:
-        description: For private (publishConfig.access=restricted) packages, authenticate npm reads with NPM_READ_TOKEN so changesets' `npm info` precheck can see already-published versions. Without it, npm returns 404 for a private package to an unauthenticated client, so changesets believes the version is unpublished, tries to republish it, and crashes. The actual publish still uses OIDC Trusted Publishing — npm prefers OIDC over a configured token (needs npm >= 11.5.1), so this read token does not interfere. Leave false for public packages (their `npm info` works unauthenticated). See DAG-156.
+        description: "DEPRECATED / no-op (DAG-162). Read auth is now always on: NODE_AUTH_TOKEN is supplied to every install/precheck step from the inherited NPM_READ_TOKEN, mirroring node-ci. Empty and harmless when the org has no such secret; the publish itself still uses OIDC Trusted Publishing. Retained only so existing callers that pass `npm-read-auth: true` don't break — safe to drop from your release.yml. See DAG-156 for the original rationale."
         type: boolean
         default: false
       release-commit-message:
@@ -92,6 +92,12 @@ jobs:
 
       - name: Install dependencies
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+        env:
+          # Authenticate installs so restricted @caracal-lynx/* deps resolve: pnpm's
+          # minimumReleaseAge check does a registry GET that 404s unauthenticated and
+          # fails the release. Unconditional, mirroring node-ci — empty/harmless when
+          # the org has no NPM_READ_TOKEN. This was the DAG-162 release-only 404.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
 
       - name: Build
         if: ${{ inputs.run-build }}
@@ -114,12 +120,13 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           NPM_CONFIG_PROVENANCE: ${{ inputs.provenance }}
-          # Private packages only (npm-read-auth: true): a READ token so changesets'
-          # `npm info` precheck can see existing versions of a restricted package.
-          # Empty for public packages. This is NOT publish auth — npm prefers OIDC
-          # Trusted Publishing over a configured token, so the publish below still
-          # goes via OIDC. See DAG-156.
-          NODE_AUTH_TOKEN: ${{ inputs.npm-read-auth && secrets.NPM_READ_TOKEN || '' }}
+          # A READ token so changesets' `npm info` precheck can see existing versions
+          # of a restricted package (unauthenticated reads 404 → changesets thinks the
+          # version is unpublished and crashes). Unconditional, mirroring node-ci; empty
+          # and harmless for public packages. This is NOT publish auth — npm prefers OIDC
+          # Trusted Publishing over a configured token, so the publish still goes via
+          # OIDC. See DAG-156, DAG-162.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
           # Publish authentication via npm Trusted Publishing (OIDC).
           # NO publish NPM_TOKEN — Classic Automation tokens were retired in Nov 2025;
           # Trusted Publishing is the recommended path for CI publishing.
