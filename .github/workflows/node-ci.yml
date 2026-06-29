@@ -22,6 +22,10 @@ on:
         description: Generate coverage report (uploads as artifact)
         type: boolean
         default: false
+      run-lint:
+        description: Run the lint job. Set false for repos with no lint script (e.g. empty stubs / placeholder repos).
+        type: boolean
+        default: true
       run-build:
         description: Run the build job. Set false for config-driven app repos with no build/dist step.
         type: boolean
@@ -53,6 +57,7 @@ concurrency:
 jobs:
   lint:
     name: Lint
+    if: ${{ inputs.run-lint }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
