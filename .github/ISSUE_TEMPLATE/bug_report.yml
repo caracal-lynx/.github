@@ -1,0 +1,55 @@
+name: 🐞 Bug report
+description: Something isn't working as expected in a Caracal Lynx repo.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Internal work is tracked in **Linear** — if you're
+        on the team, file there instead (see the link on the new-issue chooser).
+        This form is for bugs surfaced on GitHub; it mirrors the Linear *Bug*
+        template so it maps cleanly across.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences — what's broken?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The exact sequence that triggers it.
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Include error messages / stack traces verbatim, in a code block.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Repo + version/commit, OS, Node version, package manager.
+      placeholder: |
+        - Repo / package: sluice @ 0.7.2
+        - OS: Windows 11
+        - Node: 24.18.0
+        - pnpm: 11.9.0
+    validations:
+      required: true

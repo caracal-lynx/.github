@@ -1,0 +1,46 @@
+name: 💡 Feature request
+description: Suggest a capability or improvement for a Caracal Lynx repo.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Internal roadmap work lives in **Linear** — team members should file
+        there (see the new-issue chooser link). This form mirrors the Linear
+        *User Story* template.
+  - type: textarea
+    id: user-story
+    attributes:
+      label: User story
+      description: Frame it as a user story.
+      value: |
+        **As a** …
+        **I want** …
+        **So that** …
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What's painful or missing today? Why does this matter now?
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: How do we know it's done? List the checks.
+      value: |
+        - [ ] …
+        - [ ] …
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you weighed, and why this one. Optional.
+    validations:
+      required: false
