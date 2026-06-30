@@ -9,8 +9,9 @@ name: Node Release
 # consumer once DAG-58 (beta access) lands.
 #
 # Action-pinning policy (DAG-78):
-#   - Third-party actions (pnpm/action-setup, changesets/action) are pinned to a
-#     full commit SHA with a `# vX.Y.Z` comment — defends against tag re-pointing;
+#   - Third-party actions (pnpm/action-setup, changesets/action,
+#     linear/linear-release-action) are pinned to a full commit SHA with a
+#     `# vX.Y.Z` comment — defends against tag re-pointing;
 #     Renovate reads the comment as the version hint and bumps both together.
 #   - First-party actions/* (checkout, setup-node, create-github-app-token) are
 #     GitHub-owned and kept on the major-version tag, Renovate-bumped weekly.
@@ -46,6 +47,10 @@ on:
         description: Title of the auto-created release PR
         type: string
         default: "chore(release): version packages"
+      sync-linear:
+        description: "Sync the publish to a Linear release via linear-release-action. Opt-in — only fires on an actual publish, and requires the LINEAR_ACCESS_KEY org secret (inherited). See DAG-74."
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -114,6 +119,7 @@ jobs:
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm test' || 'npm test' }}
 
       - name: Create release PR or publish
+        id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           # Use `pnpm run <script>`, not `pnpm <script>`: `version` is a built-in
@@ -141,3 +147,16 @@ jobs:
           # npmjs.com/package/<name>/access to authorise this workflow by
           # org + repo + filename. The `id-token: write` permission above
           # provides the OIDC token at publish time.
+
+      # Sync the publish to a Linear release: creates/updates a Linear release and
+      # links the issues referenced in this release's commit range / PR descriptions.
+      # Opt-in (sync-linear), and ONLY on an actual publish — a run that just opens
+      # or updates the Version Packages PR has published != 'true', so this is
+      # skipped and no spurious release is created. The full git history needed to
+      # walk the commit range is already present (checkout fetch-depth: 0 above).
+      # See DAG-74.
+      - name: Sync release to Linear
+        if: ${{ inputs.sync-linear && steps.changesets.outputs.published == 'true' }}
+        uses: linear/linear-release-action@c0cb8354a362c24c6d3e0948f37fd66d07588e3f # v0.14.5
+        with:
+          access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
