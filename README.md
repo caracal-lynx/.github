@@ -16,6 +16,8 @@ for content that should only apply to private repos.
 | `.github/workflows/node-release.yml` | Reusable release flow — Changesets PR + npm publish via Trusted Publishing (OIDC) |
 | `renovate-config.json` | Shared Renovate preset (extend with `local>caracal-lynx/.github:renovate-config`) |
 | `workflow-templates/` | Templates that appear in the "New workflow" picker for every org repo |
+| `.github/ISSUE_TEMPLATE/` | Org-default bug-report + feature-request issue forms; `config.yml` disables blank issues and links to Linear |
+| `.github/PULL_REQUEST_TEMPLATE.md` | Org-default PR template (Summary / Test plan / Related Linear). Dependency PRs select the named `PULL_REQUEST_TEMPLATE/dependency_change.md` via `?template=` |
 | `CODEOWNERS` | Review ownership for **this repo only** (GitHub has no org-wide CODEOWNERS) |
 | `profile/README.md` | The org's public landing page at <https://github.com/caracal-lynx> |
 
@@ -135,8 +137,6 @@ the picker, gated on the repo containing a `package.json`.
   references internal AppSource credentials.
 - **Org-wide CODEOWNERS** — GitHub doesn't support this. Each repo needs its
   own. The CODEOWNERS in this repo only governs `caracal-lynx/.github` itself.
-- **Issue / PR templates** — community files (`ISSUE_TEMPLATE/`,
-  `PULL_REQUEST_TEMPLATE.md`) belong here too but aren't authored yet.
 
 ## Related Linear issues
 

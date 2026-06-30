@@ -1,0 +1,7 @@
+# Org-default issue chooser config. Blank issues are disabled so everything
+# comes in via a structured form (or routes to Linear, our primary tracker).
+blank_issues_enabled: false
+contact_links:
+  - name: 📋 Track work in Linear (team members)
+    url: https://linear.app/caracal-lynx/team/DAG/all
+    about: Internal bugs, features, and roadmap work are tracked in Linear — file there first if you're on the team.
