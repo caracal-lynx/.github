@@ -106,12 +106,16 @@ and immediate firing on vulnerability alerts.
 
 ## Pinning & versioning
 
-- This repo's reusable workflows reference first-party GitHub Actions
-  (`actions/*`, `pnpm/action-setup`, `changesets/action`) by **major version
-  tag** (e.g. `actions/checkout@v6`). Renovate keeps these bumped weekly.
-- Third-party actions that are less well-known should be pinned to commit SHA
-  with a comment naming the version, per `[SEC-?]` of the company
-  TypeScript standards.
+- **First-party GitHub Actions** (`actions/checkout`, `actions/setup-node`,
+  `actions/upload-artifact`, `actions/create-github-app-token`) are referenced by
+  **major-version tag** (e.g. `actions/checkout@v6`). They're GitHub-owned (low
+  supply-chain risk) and Renovate keeps them bumped weekly.
+- **Third-party actions** (`pnpm/action-setup`, `changesets/action`) are pinned
+  to a **full commit SHA** with a `# vX.Y.Z` comment (e.g.
+  `pnpm/action-setup@0ebf47…271 # v6.0.9`). The SHA defends against tag
+  re-pointing; the comment lets Renovate read the version intent and bump the
+  SHA + comment together. Per `[SEC-?]` of the company TypeScript standards, and
+  the policy comment at the top of each workflow (DAG-78).
 - Consumers pin this repo's workflows with `@main` for the bleeding edge, or
   `@v1` (once we cut tagged releases) for stability. The `@main` path is
   fine for the early rollout; switch to `@v1` once breaking changes become
