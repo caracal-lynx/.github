@@ -112,9 +112,10 @@ and immediate firing on vulnerability alerts.
   `actions/upload-artifact`, `actions/create-github-app-token`) are referenced by
   **major-version tag** (e.g. `actions/checkout@v6`). They're GitHub-owned (low
   supply-chain risk) and Renovate keeps them bumped weekly.
-- **Third-party actions** (`pnpm/action-setup`, `changesets/action`) are pinned
-  to a **full commit SHA** with a `# vX.Y.Z` comment (e.g.
-  `pnpm/action-setup@0ebf47…271 # v6.0.9`). The SHA defends against tag
+- **Third-party actions** (`pnpm/action-setup`, `changesets/action`,
+  `linear/linear-release-action`) are pinned to a **full commit SHA** with a
+  `# vX.Y.Z` comment (e.g. `pnpm/action-setup@0ebf47…271 # v6.0.9`). The SHA
+  defends against tag
   re-pointing; the comment lets Renovate read the version intent and bump the
   SHA + comment together. Per `[SEC-?]` of the company TypeScript standards, and
   the policy comment at the top of each workflow (DAG-78).
