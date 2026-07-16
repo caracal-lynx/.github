@@ -68,7 +68,7 @@ jobs:
     if: ${{ inputs.run-lint }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         if: inputs.package-manager == 'pnpm'
       - uses: actions/setup-node@v6
@@ -88,7 +88,7 @@ jobs:
     if: ${{ inputs.run-typecheck }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         if: inputs.package-manager == 'pnpm'
       - uses: actions/setup-node@v6
@@ -112,7 +112,7 @@ jobs:
       matrix:
         os: ${{ fromJSON(inputs.os-matrix) }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         if: inputs.package-manager == 'pnpm'
       - uses: actions/setup-node@v6
@@ -138,7 +138,7 @@ jobs:
     if: ${{ inputs.run-build }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         if: inputs.package-manager == 'pnpm'
       - uses: actions/setup-node@v6
@@ -165,7 +165,7 @@ jobs:
     name: Security audit
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         if: inputs.package-manager == 'pnpm'
       # No cache on this job: it runs only `audit` (no install), so there is no
@@ -191,7 +191,7 @@ jobs:
     if: ${{ inputs.require-changeset && github.event_name == 'pull_request' && !startsWith(github.head_ref, 'changeset-release/') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
