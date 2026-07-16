@@ -25,6 +25,11 @@
 
   "packageRules": [
     {
+      "description": "peerDependencies: widen ranges instead of bumping the floor — the global rangeStrategy 'bump' would narrow the supported range (e.g. typescript >=5.9.3 → >=6.0.3), breaking consumers for no benefit (eslint-config#22, 2026-07-16)",
+      "matchDepTypes": ["peerDependencies"],
+      "rangeStrategy": "widen"
+    },
+    {
       "description": "Group all @types/* updates together; auto-merge non-major",
       "matchPackagePatterns": ["^@types/"],
       "groupName": "type definitions",
