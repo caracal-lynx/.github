@@ -25,6 +25,11 @@
 
   "packageRules": [
     {
+      "matchPackageNames": ["typescript"],
+      "allowedVersions": "<7.0.0",
+      "description": "Fleet-wide hold on v6. Block all of TypeScript 7 (native compiler), open-ended — no auto-resume at 7.1. Decision 2026-07-10; lift this pin manually when we choose to adopt a 7.x line. Hoisted from per-repo renovate.json into the shared preset (DAG) so no repo can miss it (sluice-client-eribe drift, 2026-07-24)."
+    },
+    {
       "description": "peerDependencies: widen ranges instead of bumping the floor — the global rangeStrategy 'bump' would narrow the supported range (e.g. typescript >=5.9.3 → >=6.0.3), breaking consumers for no benefit (eslint-config#22, 2026-07-16)",
       "matchDepTypes": ["peerDependencies"],
       "rangeStrategy": "widen"
