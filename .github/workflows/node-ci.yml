@@ -205,21 +205,85 @@ jobs:
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
-      - name: Verify a changeset is present when src/ is modified
+      - name: Verify a changeset is present when the published surface changes
         shell: bash
         env:
           PM: ${{ inputs.package-manager }}
           BASE: ${{ github.base_ref }}
         run: |
+          REASONS=()
+
+          # 1. Code. The original trigger (DAG-76).
           if git diff --name-only "origin/${BASE}...HEAD" | grep -qE '^src/'; then
-            echo "src/ changed — a changeset is required."
-            if [ "$PM" = "pnpm" ]; then
-              pnpm exec changeset status --since="origin/${BASE}" --verbose
-            else
-              npx --no-install changeset status --since="origin/${BASE}" --verbose
-            fi
+            REASONS+=("src/ modified")
+          fi
+
+          # 2. Contract. src/ is not the boundary of what gets published:
+          # package.json carries consumer-visible surface that a src/-only check
+          # cannot see. A peerDependencies widening with no changeset shipped
+          # nothing to npm twice — 2026-05-24 (sluice-enrich #54/#55, broke
+          # sluice-client-eribe's install) and 2026-07-28 (sluice-enrich #123).
+          #
+          # Diff *fields*, not the file: devDependencies/scripts/version are not
+          # consumer-visible, and triggering on them would demand a changeset for
+          # every Renovate devDependency bump across the fleet. (DAG-31)
+          #
+          # Root package.json only. Every published package in the fleet is a
+          # repo root; revisit if a true multi-package workspace ever ships.
+          #
+          # node, not jq: setup-node has already run, so node is guaranteed here,
+          # whereas jq is only an incidental ubuntu-latest convenience. Keys are
+          # sorted recursively so a pure reordering of dependencies does not fire.
+          # `dependencies` is deliberately NOT in this list. Measured against 186
+          # package.json commits across the five gated repos: including it fires
+          # on 67 (36%), excluding it on 18 (10%). The extra 49 are almost all
+          # Renovate prod-dep bumps — bot PRs no human will hand-write a changeset
+          # for, which would sit red until someone bypasses the gate. A gate that
+          # routine traffic teaches you to bypass is worse than no gate. Revisit
+          # if Renovate ever generates changesets itself (postUpgradeTasks).
+          cat > "${RUNNER_TEMP:-/tmp}/pkg-surface.js" <<'SURFACE'
+          const KEYS = ["peerDependencies", "optionalDependencies",
+                        "exports", "main", "types", "bin", "files"];
+          const sort = (v) =>
+            Array.isArray(v) ? v.map(sort)
+            : v && typeof v === "object"
+              ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sort(v[k])]))
+              : v;
+          let pkg = {};
+          try { pkg = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch {}
+          const surface = Object.fromEntries(KEYS.map((k) => [k, pkg[k] ?? null]));
+          // engines.node only, not all of engines. npm enforces engines.node on
+          // install, so raising the floor is consumer-visible. engines.pnpm (and
+          // packageManager) are dev-workflow pins that Renovate bumps constantly
+          // and that nobody installing the published tarball ever sees — gating
+          // on them would demand a changeset for every pnpm bump in the fleet.
+          surface["engines.node"] = pkg.engines?.node ?? null;
+          console.log(JSON.stringify(sort(surface), null, 2));
+          SURFACE
+
+          SURFACE_JS="${RUNNER_TEMP:-/tmp}/pkg-surface.js"
+          # Empty stdin (no package.json on base, e.g. a brand-new repo) yields
+          # all-nulls rather than crashing the step.
+          before=$(git show "origin/${BASE}:package.json" 2>/dev/null | node "$SURFACE_JS" || true)
+          after=$(node "$SURFACE_JS" < package.json)
+
+          if [ "$before" != "$after" ]; then
+            REASONS+=("published package.json fields changed")
+            echo "::group::Changed published fields"
+            diff <(echo "$before") <(echo "$after") || true
+            echo "::endgroup::"
+          fi
+
+          if [ ${#REASONS[@]} -eq 0 ]; then
+            echo "No src/ or published-surface changes — changeset not required."
+            exit 0
+          fi
+
+          printf '%s\n' "$(IFS=', '; echo "${REASONS[*]}") — a changeset is required."
+          if [ "$PM" = "pnpm" ]; then
+            pnpm exec changeset status --since="origin/${BASE}" --verbose
           else
-            echo "No src/ changes — changeset not required."
+            npx --no-install changeset status --since="origin/${BASE}" --verbose
           fi
 
   ci-success:
