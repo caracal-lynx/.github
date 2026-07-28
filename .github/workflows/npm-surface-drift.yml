@@ -1,0 +1,147 @@
+name: npm surface drift
+
+# Detects published packages whose consumer-visible package.json surface has
+# drifted from `master` with no release queued to correct it (DAG-209).
+#
+# Why this exists: `changeset-required` in node-ci.yml gates the PR path, but
+# deliberately ignores `dependencies` — gating it fired on 36% of package.json
+# commits, almost all Renovate bot PRs, and a gate routine traffic teaches you
+# to bypass is worth less than no gate (DAG-31). This closes the gap from the
+# other end: rather than blocking the change, notice when the *result* is wrong.
+#
+# It also catches drift the gate never could — a human commit to master, or a
+# Release run that failed silently.
+#
+# The precise signal is NOT "npm differs from master". That is normal and
+# transient whenever a changeset is waiting to be released. The bug is:
+#
+#     surface differs  AND  no changeset pending on master
+#
+# i.e. nothing is queued that would ever publish the difference. That is exactly
+# the DAG-31 signature, in both its 2026-05-24 and 2026-07-28 occurrences.
+#
+# No issue is opened: a failed scheduled run already emails the org and shows a
+# red X, and the job summary names the drifting fields. Adding issue-creation
+# would need `issues: write` on the releaser App, which it does not have.
+
+on:
+  schedule:
+    # Mondays 07:00 UTC — before the 09:00 Europe/London Renovate window, so a
+    # drift report lands before the week's dependency PRs pile on top of it.
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Published surface vs master
+    runs-on: ubuntu-latest
+    steps:
+      # Cross-repo reads: GITHUB_TOKEN is scoped to this repo only, and most of
+      # the fleet is private. The releaser App has contents:read org-wide.
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ vars.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Compare published surface against master
+        shell: bash
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
+          # Restricted packages 404 on unauthenticated reads, which looks
+          # identical to "never published" — always read npm authenticated.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
+          REPOS: sluice sluice-enrich sluice-mcp spigot dredge
+        run: |
+          cat > surface.js <<'SURFACE'
+          // Note `files` is absent, unlike the node-ci.yml gate's key list: npm
+          // STRIPS `files` from the published manifest (it is a pack-time
+          // instruction, not consumer-visible metadata), so it reads as null on
+          // every package and would false-positive the whole fleet forever.
+          // The gate still checks it — there, master-vs-master, it is real.
+          const KEYS = ["dependencies", "peerDependencies", "optionalDependencies",
+                        "exports", "main", "types", "bin"];
+          const sort = (v) =>
+            Array.isArray(v) ? v.map(sort)
+            : v && typeof v === "object"
+              ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sort(v[k])]))
+              : v;
+          let pkg = {};
+          try { pkg = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch {}
+          const s = Object.fromEntries(KEYS.map((k) => [k, pkg[k] ?? null]));
+          s["engines.node"] = pkg.engines?.node ?? null;
+          console.log(JSON.stringify(sort(s), null, 2));
+          SURFACE
+
+          drifted=0
+          { echo "| Package | Published | master | Pending changeset | Verdict |"
+            echo "| -- | -- | -- | -- | -- |"; } > summary.md
+
+          for repo in $REPOS; do
+            # master's manifest, via the API — no checkout of five repos needed.
+            if ! gh api "repos/${GITHUB_REPOSITORY_OWNER}/${repo}/contents/package.json" \
+                   --jq '.content' 2>/dev/null | base64 -d > head-pkg.json; then
+              echo "::warning::${repo}: could not read package.json from master — skipped"
+              continue
+            fi
+            name=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).name||"")' < head-pkg.json)
+            local_ver=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).version||"")' < head-pkg.json)
+
+            # The published manifest. `npm view <pkg> --json` returns the
+            # registry's copy of package.json for the latest version.
+            if ! npm view "$name" --json > pub-raw.json 2>/dev/null; then
+              echo "::warning::${repo}: ${name} not readable on npm — skipped (check NPM_READ_TOKEN)"
+              continue
+            fi
+            pub_ver=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(0,"utf8")).version||"")' < pub-raw.json)
+
+            before=$(node surface.js < pub-raw.json)
+            after=$(node surface.js < head-pkg.json)
+
+            # A changeset waiting on master means a release IS queued and the
+            # difference is expected — not a finding.
+            pending=$(gh api "repos/${GITHUB_REPOSITORY_OWNER}/${repo}/contents/.changeset" \
+                        --jq '[.[] | select(.name | endswith(".md")) | select(.name != "README.md")] | length' 2>/dev/null || echo 0)
+
+            if [ "$before" = "$after" ]; then
+              echo "| \`$name\` | $pub_ver | $local_ver | $pending | ✅ in sync |" >> summary.md
+              continue
+            fi
+
+            if [ "$pending" -gt 0 ]; then
+              echo "| \`$name\` | $pub_ver | $local_ver | $pending | ⏳ release queued |" >> summary.md
+              continue
+            fi
+
+            drifted=1
+            echo "| \`$name\` | $pub_ver | $local_ver | 0 | ❌ **drifted, nothing queued** |" >> summary.md
+            {
+              echo ""
+              echo "<details><summary><code>$name</code> — published surface differs from master with no changeset pending</summary>"
+              echo ""
+              echo '```diff'
+              diff <(echo "$before") <(echo "$after") || true
+              echo '```'
+              echo ""
+              echo "\`-\` is what npm serves today; \`+\` is what \`master\` says. No changeset is"
+              echo "pending, so no release will correct this on its own."
+              echo "</details>"
+            } >> summary.md
+          done
+
+          cat summary.md >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$drifted" = "1" ]; then
+            echo "::error::Published package.json surface has drifted from master with no release queued. See the job summary."
+            exit 1
+          fi
+          echo "All published surfaces match master, or have a release queued."
