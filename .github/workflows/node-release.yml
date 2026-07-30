@@ -157,7 +157,7 @@ jobs:
       # See DAG-74.
       - name: Sync release to Linear
         if: ${{ inputs.sync-linear && steps.changesets.outputs.published == 'true' }}
-        uses: linear/linear-release-action@3858a5d7892435dc63302ac76b0cdb587435caa9 # v0.14.6
+        uses: linear/linear-release-action@af56a9a388625921f3757a2f988e4d7aca958377 # v0.15.0
         with:
           access_key: ${{ secrets.LINEAR_ACCESS_KEY }}
           # Name the Linear release after the published version (else it's "no version
