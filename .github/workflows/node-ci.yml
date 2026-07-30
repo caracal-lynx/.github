@@ -50,6 +50,20 @@ on:
         description: Require a Changesets entry on PRs that modify src/. Set true for published libraries. See DAG-63.
         type: boolean
         default: false
+      require-dist:
+        description: >-
+          Assert a non-empty root dist/ after the build. Set false for workspace monorepos, where the
+          build output lives under each package rather than at the root. Only takes effect when
+          run-build is true.
+        type: boolean
+        default: true
+      changed-paths-pattern:
+        description: >-
+          ERE matched against changed file paths to decide whether the changeset gate fires. Default
+          '^src/' suits a single-package repo whose root IS the package. A workspace monorepo passes
+          something like '^(packages|tools)/[^/]+/(src/|package\.json)'.
+        type: string
+        default: '^src/'
     secrets:
       NPM_READ_TOKEN:
         required: false
@@ -153,6 +167,9 @@ jobs:
       - name: Build
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm build' || 'npm run build' }}
       - name: Assert dist is non-empty
+        # Skipped for workspace monorepos (require-dist: false) — their build output lives under
+        # each package, so a root dist/ never exists and this would fail every run.
+        if: ${{ inputs.require-dist }}
         shell: bash
         run: |
           if [ ! -d dist ] || [ -z "$(ls -A dist 2>/dev/null)" ]; then
@@ -210,12 +227,16 @@ jobs:
         env:
           PM: ${{ inputs.package-manager }}
           BASE: ${{ github.base_ref }}
+          CHANGED_PATHS_PATTERN: ${{ inputs.changed-paths-pattern }}
         run: |
           REASONS=()
 
           # 1. Code. The original trigger (DAG-76).
-          if git diff --name-only "origin/${BASE}...HEAD" | grep -qE '^src/'; then
-            REASONS+=("src/ modified")
+          # Path pattern is caller-supplied (changed-paths-pattern) so a workspace monorepo can
+          # match packages/<name>/src/ instead of a root src/. Default '^src/' is unchanged, so
+          # every existing consumer behaves byte-identically.
+          if git diff --name-only "origin/${BASE}...HEAD" | grep -qE "${CHANGED_PATHS_PATTERN}"; then
+            REASONS+=("changed paths matched ${CHANGED_PATHS_PATTERN}")
           fi
 
           # 2. Contract. src/ is not the boundary of what gets published:
@@ -275,7 +296,7 @@ jobs:
           fi
 
           if [ ${#REASONS[@]} -eq 0 ]; then
-            echo "No src/ or published-surface changes — changeset not required."
+            echo "No matching path or published-surface changes — changeset not required."
             exit 0
           fi
 
