@@ -46,6 +46,13 @@ on:
         description: Run the test job. Set false for repos with no test suite.
         type: boolean
         default: true
+      run-format-check:
+        description: >-
+          Run `format:check` (Prettier) as a blocking job. Default false so existing consumers are
+          unaffected — opt in only once the repo's tree is already clean, or the first run is red.
+          The consumer must define a `format:check` script. See DAG-231.
+        type: boolean
+        default: false
       require-changeset:
         description: Require a Changesets entry on PRs that modify src/. Set true for published libraries. See DAG-63.
         type: boolean
@@ -96,6 +103,30 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
       - name: Run lint
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm lint' || 'npm run lint' }}
+
+  format:
+    name: Format check
+    # Opt-in (run-format-check). Separate from lint on purpose: [LINT-03] keeps Prettier
+    # out of ESLint, so a formatting failure should name itself rather than arrive as a
+    # lint error. Runs on ubuntu only — formatting is platform-independent, and the repo
+    # is expected to pin line endings via .gitattributes so a Windows clone agrees.
+    if: ${{ inputs.run-format-check }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
+        if: inputs.package-manager == 'pnpm'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          registry-url: https://registry.npmjs.org
+      - name: Install dependencies
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm install --frozen-lockfile' || 'npm ci' }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_READ_TOKEN }}
+      - name: Run format check
+        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm format:check' || 'npm run format:check' }}
 
   typecheck:
     name: Typecheck
@@ -313,7 +344,7 @@ jobs:
     # every CI job above succeeded. Lets org rulesets require one context
     # ("ci / CI success") instead of brittle per-job/matrix names. See DAG-67.
     if: always()
-    needs: [lint, typecheck, test, build, security, changeset-required]
+    needs: [lint, format, typecheck, test, build, security, changeset-required]
     runs-on: ubuntu-latest
     steps:
       - name: Fail if any required job did not succeed
