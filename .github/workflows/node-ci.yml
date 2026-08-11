@@ -280,8 +280,17 @@ jobs:
           # consumer-visible, and triggering on them would demand a changeset for
           # every Renovate devDependency bump across the fleet. (DAG-31)
           #
-          # Root package.json only. Every published package in the fleet is a
-          # repo root; revisit if a true multi-package workspace ever ships.
+          # Every package.json changed by the PR, not just the root one. This used
+          # to be root-only, on the note "revisit if a true multi-package workspace
+          # ever ships" — data-gubbins shipped, and its root manifest is private
+          # with no published surface, so the check was inspecting a file that can
+          # never change in a consumer-visible way. The gate was dead there while
+          # still reporting green. (DAG-264)
+          #
+          # Manifests whose post-change state is `"private": true` are skipped —
+          # an unpublished package has no consumer-visible surface, so demanding a
+          # changeset for one would recreate exactly the false-failure problem this
+          # field-level diff exists to avoid (docs-site, etl-rules-* et al).
           #
           # node, not jq: setup-node has already run, so node is guaranteed here,
           # whereas jq is only an incidental ubuntu-latest convenience. Keys are
@@ -314,17 +323,36 @@ jobs:
           SURFACE
 
           SURFACE_JS="${RUNNER_TEMP:-/tmp}/pkg-surface.js"
-          # Empty stdin (no package.json on base, e.g. a brand-new repo) yields
-          # all-nulls rather than crashing the step.
-          before=$(git show "origin/${BASE}:package.json" 2>/dev/null | node "$SURFACE_JS" || true)
-          after=$(node "$SURFACE_JS" < package.json)
 
-          if [ "$before" != "$after" ]; then
-            REASONS+=("published package.json fields changed")
-            echo "::group::Changed published fields"
-            diff <(echo "$before") <(echo "$after") || true
-            echo "::endgroup::"
-          fi
+          # Every package.json the PR touches. A single-package repo yields exactly
+          # the root manifest, so this is byte-identical to the previous behaviour
+          # for every existing consumer.
+          MANIFESTS=$(git diff --name-only "origin/${BASE}...HEAD" \
+                      | grep -E '(^|/)package\.json$' || true)
+
+          while IFS= read -r manifest; do
+            [ -n "$manifest" ] || continue
+
+            # Deleted by the PR — nothing published to compare against.
+            [ -f "$manifest" ] || continue
+
+            # Unpublished package: no consumer-visible surface, no changeset owed.
+            if node -e 'let p={};try{p=JSON.parse(require("fs").readFileSync(0,"utf8"))}catch{};process.exit(p.private===true?0:1)' < "$manifest"; then
+              continue
+            fi
+
+            # Empty stdin (manifest absent on base, e.g. a newly added package)
+            # yields all-nulls rather than crashing the step.
+            before=$(git show "origin/${BASE}:${manifest}" 2>/dev/null | node "$SURFACE_JS" || true)
+            after=$(node "$SURFACE_JS" < "$manifest")
+
+            if [ "$before" != "$after" ]; then
+              REASONS+=("published fields changed in ${manifest}")
+              echo "::group::Changed published fields — ${manifest}"
+              diff <(echo "$before") <(echo "$after") || true
+              echo "::endgroup::"
+            fi
+          done <<< "$MANIFESTS"
 
           if [ ${#REASONS[@]} -eq 0 ]; then
             echo "No matching path or published-surface changes — changeset not required."
