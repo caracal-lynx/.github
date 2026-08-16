@@ -19,8 +19,9 @@
 
   "lockFileMaintenance": {
     "enabled": true,
-    "schedule": ["before 9am on monday", "before 9am on thursday"],
-    "automerge": true
+    "schedule": ["before 9am on the first day of the month"],
+    "automerge": true,
+    "description": "MOI-3 (DAG-294): monthly, was twice weekly. Lockfile maintenance regenerates the whole tree from manifest ranges, which is how read-excel-file 9.3.8 landed in data-gubbins straight past a Renovate `<9.3.5` hold — a hold binds only if the declared manifest range already excludes the ceiling, and full regeneration re-resolves from the manifest. Twice-weekly full-tree regeneration against a hand-maintained overrides block is churn with a known failure mode: renovate/lock-file-maintenance was the single worst branch in data-gubbins at 23 CI runs. Monthly still prunes stale transitive resolutions and still reconciles the overrides block. Not disabled — that is the only mechanism which does either."
   },
 
   "packageRules": [
@@ -68,6 +69,20 @@
     {
       "description": "Runtime dependencies (anything that ships to users) never auto-merge — manual review enforced",
       "matchDepTypes": ["dependencies"],
+      "automerge": false
+    },
+    {
+      "description": "MOI-1 (DAG-292): group pnpm catalog updates into one PR. Catalog entries carry depType 'pnpm.catalog.<name>' — verified as literally 'pnpm.catalog.default' from Renovate 44.30.3 extraction output, 21 of 21 entries, DAG-291. That matches NEITHER the devDependencies nor the dependencies rule above, so before this rule every catalogued dependency got its own PR: adopting the pnpm catalog silently disabled the fleet's main batching rule. On a shared lockfile under strict status checks N separate PRs cost O(N^2) CI runs — 18 PRs produced 983 workflow runs on 2026-08-11. Majors are excluded and keep individual review. automerge is FALSE, deliberately and against the original draft: the catalog mixes dev tooling with nine runtime dependencies that ship to users (commander, pino, pino-pretty, picocolors, csv-stringify, axios, axios-retry, pg, yaml), and because their depType is the catalog one, the runtime-dependency rule above cannot see them — automerge:true here would have reversed the standing no-auto-merge-for-runtime decision by a side door. Placed LAST on purpose: last match wins per field, which also means catalogued @types/* join this group instead of 'type definitions'. That is accepted — it is one fewer PR, and the group needs a human merge either way.",
+      "matchDepTypes": ["pnpm.catalog.default"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "pnpm catalog",
+      "automerge": false
+    },
+    {
+      "description": "MOI-2 (DAG-293): group runtime dependency patch/minor updates. The rule above sets automerge:false for dependencies and nothing else, so runtime bumps fell through every grouping rule and each opened its own PR — four of the eighteen in the 2026-08-11 wave. automerge stays false: runtime dependencies ship to users and keep manual review. Majors are excluded; a grouped major that fails is genuinely hard to bisect, and majors are where the review value is.",
+      "matchDepTypes": ["dependencies"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "production dependencies",
       "automerge": false
     }
   ]
