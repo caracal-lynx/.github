@@ -166,8 +166,16 @@ jobs:
           version-script: ${{ inputs.package-manager == 'pnpm' && 'pnpm run version' || 'npm run version' }}
           commit-message: ${{ inputs.release-commit-message }}
           pr-title: ${{ inputs.release-pr-title }}
+          # v2 takes the token as an INPUT and refuses to run when a GITHUB_TOKEN
+          # env var is also set and differs from it:
+          #   "The GITHUB_TOKEN environment variable is set and does not match the
+          #    github-token input."
+          # Under v1 the env var was the only channel. It must now be passed here and
+          # NOT in env below, or the App token and the action's default github.token
+          # disagree and the action hard-fails. The App token is what lets the release
+          # PR trigger CI — github.token deliberately cannot.
+          github-token: ${{ steps.app-token.outputs.token || github.token }}
         env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           NPM_CONFIG_PROVENANCE: ${{ inputs.provenance }}
           # A READ token so changesets' `npm info` precheck can see existing versions
           # of a restricted package (unauthenticated reads 404 → changesets thinks the
@@ -199,4 +207,10 @@ jobs:
           # Name the Linear release after the published version (else it's "no version
           # set" — confirmed via DAG-74 dry-run). publishedPackages is non-empty here:
           # the step only runs on a real publish. First package's version is used.
-          version: ${{ fromJSON(steps.changesets.outputs.publishedPackages)[0].version }}
+          # v2 renamed the outputs too: publishedPackages -> published-packages
+          # (also hasChangesets -> has-changesets, pullRequestNumber -> pr-number, neither
+          # used here). `published` kept its name. An unrenamed output resolves to an
+          # empty string, so fromJSON('') would fail this step AFTER a successful publish.
+          # BRACKET syntax is mandatory: in a GitHub expression `outputs.published-packages`
+          # parses the hyphen as SUBTRACTION, not as part of the property name.
+          version: ${{ fromJSON(steps.changesets.outputs['published-packages'])[0].version }}
