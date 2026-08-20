@@ -158,10 +158,14 @@ jobs:
           # pnpm command (bump-the-version, needs a semver arg) so bare `pnpm version`
           # fails with ERR_PNPM_INVALID_VERSION_BUMP and never runs the package script.
           # `release` is not reserved, but keep it symmetric for safety.
-          publish: ${{ inputs.package-manager == 'pnpm' && 'pnpm run release' || 'npm run release' }}
-          version: ${{ inputs.package-manager == 'pnpm' && 'pnpm run version' || 'npm run version' }}
-          commit: ${{ inputs.release-commit-message }}
-          title: ${{ inputs.release-pr-title }}
+          # changesets/action v2 renamed every one of these (publish -> publish-script,
+          # version -> version-script, commit -> commit-message, title -> pr-title).
+          # Passing the v1 names does not warn — the action hard-fails with
+          # "The following inputs have been renamed", so a release cannot run at all.
+          publish-script: ${{ inputs.package-manager == 'pnpm' && 'pnpm run release' || 'npm run release' }}
+          version-script: ${{ inputs.package-manager == 'pnpm' && 'pnpm run version' || 'npm run version' }}
+          commit-message: ${{ inputs.release-commit-message }}
+          pr-title: ${{ inputs.release-pr-title }}
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token || github.token }}
           NPM_CONFIG_PROVENANCE: ${{ inputs.provenance }}
