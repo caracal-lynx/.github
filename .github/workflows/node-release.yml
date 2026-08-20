@@ -20,9 +20,23 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: Node.js version (matches package.json engines.node lower bound)
+        description: |
+          Explicit Node.js version. Mutually exclusive with node-version-file — set
+          exactly one. Deliberately has NO default: it used to default to "24.16.0",
+          which meant a consumer that omitted it was silently pinned to a version
+          that is below every current repo's engines.node floor. A version nobody
+          chose is the wrong kind of default (DAG-12).
         type: string
-        default: "24.16.0"
+        default: ""
+      node-version-file:
+        description: |
+          Path to a file declaring the Node version — ".nvmrc", ".node-version", or
+          "package.json". PREFERRED over node-version: it makes the repo's own file
+          the single source of truth instead of a pin duplicated into every workflow
+          that then drifts. sluice-client-eribe's CI ran 53 days below its own
+          engines floor exactly that way. Mutually exclusive with node-version.
+        type: string
+        default: ""
       package-manager:
         description: Package manager — "npm" or "pnpm"
         type: string
@@ -66,6 +80,23 @@ jobs:
     name: Release
     runs-on: ubuntu-latest
     steps:
+      - name: Exactly one of node-version / node-version-file must be set
+        # First step on purpose: fail before minting a token or touching the
+        # registry. Unlike node-ci.yml there is no ci-success job to validate in,
+        # and this workflow PUBLISHES — a run on an unintended Node version is not
+        # something to discover afterwards. setup-node given neither input falls
+        # back to whatever the runner ships and only warns.
+        run: |
+          v='${{ inputs.node-version }}'
+          f='${{ inputs.node-version-file }}'
+          if [ -z "$v" ] && [ -z "$f" ]; then
+            echo "::error::Set node-version-file (preferred, e.g. .nvmrc) or node-version. Neither was supplied."
+            exit 1
+          fi
+          if [ -n "$v" ] && [ -n "$f" ]; then
+            echo "::error::node-version ('$v') and node-version-file ('$f') are mutually exclusive. setup-node would silently prefer node-version and ignore the file."
+            exit 1
+          fi
       - name: Check App token prerequisites
         id: preflight
         shell: bash
@@ -99,6 +130,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
           cache: ${{ inputs.package-manager }}
           registry-url: https://registry.npmjs.org
 
