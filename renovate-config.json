@@ -1,6 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "description": "Shared Renovate preset for Caracal Lynx repos. Consumers extend it with: \"extends\": [\"local>caracal-lynx/.github:renovate-config\"]",
+  "description": [
+    "Shared Renovate preset for Caracal Lynx repos. Consumers extend it with: \"extends\": [\"local>caracal-lynx/.github:renovate-config\"]",
+    "hostRules (DAG-3xx, 2026-08-20): npm read auth for the private @caracal-lynx scope. npm answers 404 — NOT 403 — for a restricted package you are not authorised to see, so an unauthenticated Renovate cannot tell 'private' from 'unpublished'. It logs 'no-result' and drops the dependency. The failure is silent: no PR, no error, no failing check, just a collapsed 'Package lookup failures' warning at the bottom of the Dependency Dashboard. Verified 2026-08-20: unauthenticated GET registry.npmjs.org returns 200 for @caracal-lynx/sluice (public) and 404 for @caracal-lynx/sluice-enrich and @caracal-lynx/eslint-config (restricted). sluice resolving is what disguised this — one public package in the scope made the pipeline look healthy.",
+    "What it actually broke: sluice-client-eribe last got a Renovate-proposed @caracal-lynx update in #75 (2026-07-16). #95 (~2026-08-03) was opened and then AUTOCLOSED — Renovate withdrawing a PR it could no longer substantiate. Every @caracal-lynx change in that repo since has been made by hand (#92, #102). The trigger was the monorepo cutover: the standalone repos were archived 2026-07-30 and publishing moved to OIDC from data-gubbins, which publishes restricted by default. @caracal-lynx/sluice is deliberately public (open-source; confirmed 2026-08-20) — the other three are deliberately private, and that asymmetry is now load-bearing rather than accidental.",
+    "Why this mattered more than staleness: the packages were never actually frozen. lockFileMaintenance regenerates via an authenticated `pnpm install` in CI, so it resolves private packages fine — eribe#98 silently carried eslint-config 0.1.0->0.1.2 and sluice-enrich 1.3.2->1.3.4 under a PR titled only 'chore(deps): lock file maintenance', with lockFileMaintenance.automerge true. So the private first-party packages inverted their own governance: eribe's config says @caracal-lynx/* never auto-merges in client repos and that sluice-enrich 'runs against client data', yet both were updated unreviewed through the one path that does not consult packageRules at all. Same OFFERS-vs-RESOLVES split as the read-excel-file hold (MOI-10 / DAG-301), pointed the other way — there a hold governing offers could not stop a resolution; here review rules governing offers could not review one.",
+    "Mechanics: the token VALUE is not in this file and must not be. Mend no longer accepts encrypted secrets in repo config; the credential lives in the Mend portal (developer.mend.io) under Credentials at ORGANISATION scope, named NPM_READ_TOKEN, and is inherited by every repo in the org. This file carries only the reference. Hoisted here rather than into each repo for the same reason as the typescript <7 hold: no repo can miss it, and every future client repo is covered on day one instead of hitting this silently. data-gubbins is unaffected either way — its internal deps are all `workspace:`, which Renovate never looks up.",
+    "KNOWN RESIDUAL RISK — read before rotating: if NPM_READ_TOKEN expires or is revoked, this reverts to the exact silent 404 above with no alarm. Prefer a granular read-only token scoped to @caracal-lynx with no expiry; if an expiry is set, the rotation date must be tracked outside npm because nothing here will tell you."
+  ],
 
   "extends": ["config:recommended", ":semanticCommits"],
   "timezone": "Europe/London",
@@ -16,6 +23,14 @@
     "schedule": ["at any time"],
     "labels": ["security", "vulnerability"]
   },
+
+  "hostRules": [
+    {
+      "hostType": "npm",
+      "matchHost": "registry.npmjs.org",
+      "token": "{{ secrets.NPM_READ_TOKEN }}"
+    }
+  ],
 
   "lockFileMaintenance": {
     "enabled": true,
