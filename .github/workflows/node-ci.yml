@@ -15,9 +15,23 @@ on:
   workflow_call:
     inputs:
       node-version:
-        description: Node.js version (matches package.json engines.node lower bound)
+        description: |
+          Explicit Node.js version. Mutually exclusive with node-version-file — set
+          exactly one. Deliberately has NO default: it used to default to "24.16.0",
+          which meant a consumer that omitted it was silently pinned to a version
+          that is below every current repo's engines.node floor. A version nobody
+          chose is the wrong kind of default (DAG-12).
         type: string
-        default: "24.16.0"
+        default: ""
+      node-version-file:
+        description: |
+          Path to a file declaring the Node version — ".nvmrc", ".node-version", or
+          "package.json". PREFERRED over node-version: it makes the repo's own file
+          the single source of truth instead of a pin duplicated into every workflow
+          that then drifts. sluice-client-eribe's CI ran 53 days below its own
+          engines floor exactly that way. Mutually exclusive with node-version.
+        type: string
+        default: ""
       os-matrix:
         description: JSON array of runner OS labels for the test matrix
         type: string
@@ -95,6 +109,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
           cache: ${{ inputs.package-manager }}
           registry-url: https://registry.npmjs.org
       - name: Install dependencies
@@ -119,6 +134,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
           cache: ${{ inputs.package-manager }}
           registry-url: https://registry.npmjs.org
       - name: Install dependencies
@@ -139,6 +155,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
           cache: ${{ inputs.package-manager }}
           registry-url: https://registry.npmjs.org
       - name: Install dependencies
@@ -163,6 +180,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
           cache: ${{ inputs.package-manager }}
           registry-url: https://registry.npmjs.org
       - name: Install dependencies
@@ -189,6 +207,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
           cache: ${{ inputs.package-manager }}
           registry-url: https://registry.npmjs.org
       - name: Install dependencies
@@ -223,6 +242,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
       - name: npm audit — production dependencies (blocking)
         run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --prod --audit-level=high' || 'npm audit --omit=dev --audit-level=high' }}
       - name: npm audit — full dependency tree (report-only, non-blocking)
@@ -247,6 +267,7 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
+          node-version-file: ${{ inputs.node-version-file }}
           cache: ${{ inputs.package-manager }}
           registry-url: https://registry.npmjs.org
       - name: Install dependencies
@@ -375,6 +396,25 @@ jobs:
     needs: [lint, format, typecheck, test, build, security, changeset-required]
     runs-on: ubuntu-latest
     steps:
+      - name: Exactly one of node-version / node-version-file must be set
+        # Validated HERE rather than in a dedicated guard job on purpose. ci-success
+        # already needs every job and already gates the ruleset, so this costs no
+        # extra runner and adds no `needs:` wait to the other jobs. A separate guard
+        # job would serialise the start of all ~40 CI runs a day to catch a
+        # misconfiguration that happens once, when a repo is first wired up.
+        # Without it, setup-node given neither input falls back to whatever Node the
+        # runner happens to ship and only warns — a silent wrong-version run.
+        run: |
+          v='${{ inputs.node-version }}'
+          f='${{ inputs.node-version-file }}'
+          if [ -z "$v" ] && [ -z "$f" ]; then
+            echo "::error::Set node-version-file (preferred, e.g. .nvmrc) or node-version. Neither was supplied, so the Node version used by this run was whatever the runner shipped."
+            exit 1
+          fi
+          if [ -n "$v" ] && [ -n "$f" ]; then
+            echo "::error::node-version ('$v') and node-version-file ('$f') are mutually exclusive. setup-node would silently prefer node-version and ignore the file."
+            exit 1
+          fi
       - name: Fail if any required job did not succeed
         if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
         run: exit 1

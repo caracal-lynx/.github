@@ -39,11 +39,32 @@ jobs:
   ci:
     uses: caracal-lynx/.github/.github/workflows/node-ci.yml@main
     with:
-      node-version: "24.16.0"
+      node-version-file: .nvmrc   # preferred — the repo's own file is the source of truth
       os-matrix: '["ubuntu-latest", "windows-latest"]'
       package-manager: npm        # or "pnpm" — defaults to "npm"
       coverage: false             # true uploads a coverage artifact from ubuntu
 ```
+
+### Node version: use `node-version-file`
+
+Set **exactly one** of `node-version-file` (preferred) or `node-version`. Supplying
+both fails the run — `setup-node` would silently prefer `node-version` and ignore the
+file. Supplying neither also fails, rather than quietly using whatever Node the runner
+happens to ship.
+
+Prefer `node-version-file: .nvmrc` because it makes the repo's own file the single
+source of truth. A literal `node-version` is a pin duplicated into every workflow, and
+duplicated pins drift: `sluice-client-eribe` ran CI on Node 24.16.0 for **53 days**
+while its own `package.json` declared `>=24.18.0`, because Renovate can raise an
+`engines` field but cannot touch a version string inside a workflow input. The only
+symptom was a `[WARN]` line nobody read.
+
+`.nvmrc` also drives local development — with `fnm env --use-on-cd` the right Node
+selects itself on `cd`, so CI and laptops run the same version by construction rather
+than by discipline.
+
+`node-version` has **no default**. It previously defaulted to `"24.16.0"`, which meant
+omitting it silently pinned a consumer below every current repo's `engines.node` floor.
 
 **Required scripts in the consumer's `package.json`:** `lint`, `typecheck`,
 `build`, `test` (and `test:cov` if `coverage: true`).
@@ -64,7 +85,7 @@ jobs:
   release:
     uses: caracal-lynx/.github/.github/workflows/node-release.yml@main
     with:
-      node-version: "24.16.0"
+      node-version-file: .nvmrc   # preferred — see note below
       package-manager: npm
     secrets: inherit              # workflow reads RELEASER_PRIVATE_KEY, etc.
 ```
