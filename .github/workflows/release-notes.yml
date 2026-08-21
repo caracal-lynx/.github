@@ -1,0 +1,45 @@
+name: Release notes
+
+# Turns every tag into a GitHub Release whose body lists every PR it contains.
+#
+# Why (DAG-327): this repo is released by hand-cutting a tag from master, with no
+# changelog and no step that says what a tag holds. The person tagging naturally
+# assumes it holds the PR they just merged. It holds everything merged since the
+# previous tag — v1.16.0 was cut to ship #51 and swept in five other commits,
+# including the changesets/action v2 major (#46) that broke data-gubbins' Release.
+#
+# --generate-notes makes that visible as an artefact instead of a habit: an
+# unexpected PR in the release body is obvious, where an unexpected commit on
+# master is not.
+#
+# This does not PREVENT the accumulation, and is not meant to. The prevention half
+# is DAG-326's smoke test, which stops a broken commit reaching master at all.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to generate notes for (backfill)
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    name: Generate release notes
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the release with auto-generated notes
+        # No checkout: `gh release create` works entirely against the API, and the
+        # tag already exists on the remote by the time this fires.
+        # --verify-tag so a typo'd workflow_dispatch input fails instead of silently
+        # creating a tag that points at the default branch.
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag || github.ref_name }}
+        run: gh release create "$TAG" --verify-tag --generate-notes --title "$TAG"
