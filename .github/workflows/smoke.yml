@@ -23,8 +23,10 @@ on:
     branches: [master]
   workflow_dispatch:
 
-permissions:
-  contents: read
+# No workflow-level permissions block. A called workflow's `permissions:` cannot
+# grant more than the caller's token already has, so a blanket `contents: read`
+# here caps node-release.yml's `id-token: write` at `none` and the run fails at
+# startup before a single step executes. Each job declares its own instead.
 
 concurrency:
   group: smoke-${{ github.ref }}
@@ -35,6 +37,8 @@ jobs:
     # Job id `ci` on purpose — it forms the `ci / CI success` check context, the same
     # one consumers gate their rulesets on.
     name: node-ci.yml
+    permissions:
+      contents: read
     uses: ./.github/workflows/node-ci.yml
     with:
       node-version-file: .nvmrc
@@ -49,6 +53,11 @@ jobs:
 
   release:
     name: node-release.yml
+    # Mirrors node-release.yml's own block exactly — it is the ceiling, not a grant.
+    permissions:
+      contents: write
+      pull-requests: write
+      id-token: write
     uses: ./.github/workflows/node-release.yml
     with:
       node-version-file: .nvmrc
