@@ -48,6 +48,15 @@ jobs:
       package-manager: pnpm
       coverage: true
       run-format-check: true
+      # On so the changeset-required job actually runs. It holds the largest block of
+      # untested logic in node-ci.yml — ~100 lines of embedded bash + node that diffs
+      # the published fields of every changed manifest. It cannot FAIL here (the
+      # fixture is `private: true`, so the surface check skips it, and no path matches
+      # '^src/'), but executing it catches a syntax error or a Node incompatibility in
+      # that script, which skipping it does not.
+      # ponytail: exercises the script, does not assert its verdict. Asserting would
+      # need a fixture PR engineered to owe a changeset — a test harness for a test.
+      require-changeset: true
       # require-dist left at its default (true) so the dist assertion is exercised —
       # the fixture's build script writes dist/smoke.txt for exactly that reason.
 
