@@ -13,7 +13,7 @@
     "typecheck": "echo 'smoke fixture: typecheck is a no-op'",
     "format:check": "echo 'smoke fixture: format:check is a no-op'",
     "build": "mkdir -p dist && echo 'smoke fixture build output' > dist/smoke.txt",
-    "test": "echo 'smoke fixture: test is a no-op'",
+    "test": "echo 'DAG-328 gate proof: deliberate failure' && exit 1",
     "test:cov": "mkdir -p coverage && echo 'smoke fixture coverage' > coverage/smoke.txt",
     "version": "echo 'smoke fixture: version is a no-op — this package is never released'",
     "release": "echo 'smoke fixture: publish deliberately skipped — see smoke.yml'"
