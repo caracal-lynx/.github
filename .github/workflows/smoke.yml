@@ -34,9 +34,12 @@ concurrency:
 
 jobs:
   ci:
-    # Job id `ci` on purpose — it forms the `ci / CI success` check context, the same
-    # one consumers gate their rulesets on.
-    name: node-ci.yml
+    # No display `name:` here. The check CONTEXT is built from the job's display name
+    # when one is set, and from the job id otherwise — so `name: node-ci.yml` produced
+    # the context `node-ci.yml / CI success`. Without it the context is
+    # `ci / CI success`, which is the string consumers gate their own rulesets on and
+    # the one DAG-328's ruleset requires. A ruleset requiring a context that never
+    # reports blocks every PR indefinitely with nothing on the page to say why.
     permissions:
       contents: read
     uses: ./.github/workflows/node-ci.yml
@@ -61,7 +64,7 @@ jobs:
       # the fixture's build script writes dist/smoke.txt for exactly that reason.
 
   release:
-    name: node-release.yml
+    # Job id `release` forms the `release / Release` context — see the note above.
     # Mirrors node-release.yml's own block exactly — it is the ceiling, not a grant.
     permissions:
       contents: write
