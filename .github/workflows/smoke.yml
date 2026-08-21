@@ -1,0 +1,66 @@
+name: Smoke
+
+# Runs this repo's OWN reusable workflows against the fixture package at the root.
+#
+# Why (DAG-326): node-ci.yml and node-release.yml are consumed by the whole fleet and
+# were, until now, never executed here. A change to either was unverifiable in the repo
+# that owns it — the first execution happened in a consumer, and for node-release.yml
+# that means on the publish path. changesets/action v2 (#46, 13 Aug) renamed its entire
+# input surface; nothing here noticed until data-gubbins' Release broke on 21 Aug.
+#
+# Nothing is published. The fixture's `release` script is an echo, so changesets/action
+# is invoked in full — token handling, input names, the whole call contract — but the
+# publish itself is a no-op.
+#
+# ponytail: pnpm only. Both Node consumers in the fleet (data-gubbins,
+# sluice-client-eribe) use pnpm, so the `npm` branch of these workflows is still
+# unexercised. Add a second pair of jobs with package-manager: npm if a consumer
+# ever adopts it.
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  ci:
+    # Job id `ci` on purpose — it forms the `ci / CI success` check context, the same
+    # one consumers gate their rulesets on.
+    name: node-ci.yml
+    uses: ./.github/workflows/node-ci.yml
+    with:
+      node-version-file: .nvmrc
+      # ubuntu only: the fixture's scripts are echoes, so a Windows leg would bill the
+      # x2 multiplier to prove nothing. Consumers keep their own matrix (DAG-263).
+      os-matrix: '["ubuntu-latest"]'
+      package-manager: pnpm
+      coverage: true
+      run-format-check: true
+      # require-dist left at its default (true) so the dist assertion is exercised —
+      # the fixture's build script writes dist/smoke.txt for exactly that reason.
+
+  release:
+    name: node-release.yml
+    uses: ./.github/workflows/node-release.yml
+    with:
+      node-version-file: .nvmrc
+      package-manager: pnpm
+      # Restricted-package setting; the fixture is private and nothing reaches npm
+      # either way, but provenance on a private package is the wrong default to model.
+      provenance: false
+      # sync-linear stays false. It gates on `published == 'true'`, which the echo
+      # release script never produces, so the step is skipped and its expression is
+      # never evaluated. That is this smoke test's known ceiling: it catches breaks
+      # that hard-fail changesets/action (renamed inputs, token conflicts), NOT ones
+      # that live in the skipped Linear-sync step (renamed outputs, hyphen-vs-minus
+      # in `outputs['published-packages']`). Closing that gap needs a real publish.
+      sync-linear: false
+    secrets: inherit

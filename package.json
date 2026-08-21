@@ -1,0 +1,21 @@
+{
+  "name": "@caracal-lynx/workflow-smoke-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Minimal fixture package so this repo can call its own reusable workflows. Never published — see .github/workflows/smoke.yml and DAG-326.",
+  "packageManager": "pnpm@11.22.0",
+  "engines": {
+    "node": ">=24.19.0",
+    "pnpm": ">=11.15.0"
+  },
+  "scripts": {
+    "lint": "echo 'smoke fixture: lint is a no-op'",
+    "typecheck": "echo 'smoke fixture: typecheck is a no-op'",
+    "format:check": "echo 'smoke fixture: format:check is a no-op'",
+    "build": "mkdir -p dist && echo 'smoke fixture build output' > dist/smoke.txt",
+    "test": "echo 'smoke fixture: test is a no-op'",
+    "test:cov": "mkdir -p coverage && echo 'smoke fixture coverage' > coverage/smoke.txt",
+    "version": "echo 'smoke fixture: version is a no-op — this package is never released'",
+    "release": "echo 'smoke fixture: publish deliberately skipped — see smoke.yml'"
+  }
+}
