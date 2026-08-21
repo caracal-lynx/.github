@@ -37,7 +37,7 @@ on:
 
 jobs:
   ci:
-    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@main
+    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.16.2
     with:
       node-version-file: .nvmrc   # preferred — the repo's own file is the source of truth
       os-matrix: '["ubuntu-latest", "windows-latest"]'
@@ -83,7 +83,7 @@ on:
 
 jobs:
   release:
-    uses: caracal-lynx/.github/.github/workflows/node-release.yml@main
+    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.16.2
     with:
       node-version-file: .nvmrc   # preferred — see note below
       package-manager: npm
@@ -140,10 +140,37 @@ and immediate firing on vulnerability alerts.
   re-pointing; the comment lets Renovate read the version intent and bump the
   SHA + comment together. Per `[SEC-?]` of the company TypeScript standards, and
   the policy comment at the top of each workflow (DAG-78).
-- Consumers pin this repo's workflows with `@main` for the bleeding edge, or
-  `@v1` (once we cut tagged releases) for stability. The `@main` path is
-  fine for the early rollout; switch to `@v1` once breaking changes become
-  a real concern.
+- **Consumers pin this repo's workflows to an exact tag** — `@v1.16.2`, not `@v1`
+  and not `@master`. Renovate raises a PR when a new tag lands, so the bump is
+  reviewed in the consumer's own CI rather than arriving unannounced. There is no
+  `main` branch here; the default branch is `master`, and pinning to it would give
+  every consumer whatever happened to be merged that morning.
+
+## Releasing this repo
+
+A tag here is a fleet-wide release. There is no release branch and no changelog
+step, so **a tag contains everything merged since the previous tag** — not the PR
+you just merged.
+
+**Diff before you tag:**
+
+```powershell
+git -C C:
+git -C C:\repos\.github fetch origin --tags
+git log --oneline v1.16.2..master     # every commit the next tag would ship
+git diff --stat v1.16.2..master
+```
+
+This is not hypothetical. `v1.16.0` was cut to release `node-version-file` (#51)
+and shipped **six** commits, among them the `changesets/action` v2 major (#46)
+whose renamed inputs were never migrated. That major had sat harmlessly on
+`master` for a week precisely *because* consumers pin tags — tagging is what
+activated it, and `data-gubbins`' `Release` broke on adoption. See DAG-326/DAG-327.
+
+Pushing a `v*` tag fires `.github/workflows/release-notes.yml`, which creates a
+GitHub Release listing every PR in the range. Read it after tagging: an
+unexpected PR in that body means the tag shipped more than you thought, and you
+can cut a follow-up before a consumer adopts it.
 
 ## Workflow templates in the UI
 
