@@ -33,18 +33,21 @@ jobs:
   guard:                       # keep this job id stable — it is the check name
     runs-on: ubuntu-latest
     steps:
-      - uses: caracal-lynx/.github/actions/linear-key-guard@<full-40-char-sha>
+      - uses: caracal-lynx/.github/actions/linear-key-guard@v1.17.0
 ```
 
 No checkout needed. No secrets. `caracal-lynx/.github` is public, so the action resolves without
 a token.
 
-**The ref must be a full 40-character SHA or a tag.** GitHub rejects a shortened SHA outright —
-*"the provided ref is the shortened version of a commit SHA, which is not supported"* — and does so
-at job setup, so the check fails rather than silently skipping. There is **no `v1` tag**: this
-action shipped after `v1.16.2` and the next tag will also carry five unrelated commits, including a
-`linear-release-action` bump inside `node-release.yml`. Pin the SHA until a tag is cut deliberately;
-see the tagging section of the repo README for why that ordering matters.
+**The ref must be a version tag or a full 40-character SHA.** GitHub rejects a shortened SHA
+outright — *"the provided ref is the shortened version of a commit SHA, which is not supported"* —
+and does so at job setup, so the check fails rather than silently skipping.
+
+`v1.17.0` is the first tag containing this action, and a tag is the right pin here: it is the
+DAG-78 Part A policy for first-party `caracal-lynx` refs, and Renovate keeps it current. There is
+no floating `v1`. Every consumer pinned a SHA for a few hours after the action shipped, because
+`v1.16.2` predated it and cutting a tag purely to tidy a pin would have swept five unread commits
+into a release — see the tagging section of the repo README for why that ordering matters.
 
 `edited` is not optional: a PR body can be rewritten to add a key after a green run, with no push
 to re-trigger anything.
