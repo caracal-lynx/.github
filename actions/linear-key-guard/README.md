@@ -1,6 +1,6 @@
 # Linear key guard
 
-Fails a pull request that carries a bare Linear issue key (`DAG-305`, `BCG-77`) in a field
+Fails a pull request that carries a bare Linear issue key (`DAG-NNN`, `BCG-NNN`) in a field
 Linear's GitHub integration scans, unless the branch name declares that key.
 
 ## Why
@@ -33,11 +33,18 @@ jobs:
   guard:                       # keep this job id stable — it is the check name
     runs-on: ubuntu-latest
     steps:
-      - uses: caracal-lynx/.github/actions/linear-key-guard@v1
+      - uses: caracal-lynx/.github/actions/linear-key-guard@<full-40-char-sha>
 ```
 
 No checkout needed. No secrets. `caracal-lynx/.github` is public, so the action resolves without
 a token.
+
+**The ref must be a full 40-character SHA or a tag.** GitHub rejects a shortened SHA outright —
+*"the provided ref is the shortened version of a commit SHA, which is not supported"* — and does so
+at job setup, so the check fails rather than silently skipping. There is **no `v1` tag**: this
+action shipped after `v1.16.2` and the next tag will also carry five unrelated commits, including a
+`linear-release-action` bump inside `node-release.yml`. Pin the SHA until a tag is cut deliberately;
+see the tagging section of the repo README for why that ordering matters.
 
 `edited` is not optional: a PR body can be rewritten to add a key after a green run, with no push
 to re-trigger anything.
@@ -49,7 +56,7 @@ to re-trigger anything.
 
 One rule, no configuration, and it lands correctly on both kinds of repo:
 
-- **Code repo** — `feat/dag-142-parquet-writer` lets `DAG-142` appear bare in the title, body and
+- **Code repo** — `feat/dag-NNN-parquet-writer` lets that one key appear bare in the title, body and
   commits. That is the branch the work is on and Linear moving it on merge is *correct*; the
   branch-naming standard requires the key for `feat/fix/perf/hotfix`. Any **other** key is a
   citation and must be spaced.
@@ -59,6 +66,31 @@ A blanket ban would forbid exactly the transitions the integration exists to per
 
 **The diff is not scanned.** Documents may cite hundreds of keys with hyphens and transition
 nothing — tested twice. Only those four fields matter, which is what makes this cheap.
+
+## Writing about the convention triggers it
+
+Not obvious until it bites, and it bit the rollout PR that introduced this action three drafts
+running. A key does not have to be a *reference* to count — the integration matches the token,
+not the intent. All three of these transition `DAG-142` on merge:
+
+```text
+Refs DAG-142                                  <- a reference
+per DAG-142, the ceiling was raised           <- a citation
+| `feat/dag-142-parquet-writer` | passes |    <- an EXAMPLE, in a table explaining this rule
+```
+
+The third is the one that catches people. A PR body documenting branch naming, a runbook showing
+a sample commit message, a review comment quoting a bad branch name — each carries a live key.
+
+**Write `dag-NNN` in documentation.** It reads as a placeholder, which is what it is, and matches
+nothing. Use a real key only when you mean the transition.
+
+**This README follows its own rule, and the one place it does not is deliberate.** The branch and
+usage examples above all say `dag-NNN`. The three lines in the block above use a real-looking key
+because a placeholder cannot demonstrate what a match looks like — do not copy them.
+
+Real keys appear elsewhere here only in prose describing an incident that happened (`DAG-154`,
+`DAG-265`), which is a citation about the past, not a template.
 
 ## Escape hatch
 
