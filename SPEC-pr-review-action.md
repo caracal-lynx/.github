@@ -2,7 +2,43 @@
 **Organisation:** Caracal Lynx Limited  
 **Repo target:** `caracal-lynx/.github`  
 **Specification version:** 1.0  
-**Status:** Ready for implementation
+**Status:** WARNING - **NOT IMPLEMENTED, and not implementable as specified.** See below.
+
+---
+
+## Status, corrected 2026-08-28 (DAG 225)
+
+This document sat at "Ready for implementation" while nothing implemented it and nothing referenced
+it. In a public repository that reads as an organisation-wide review control which does not exist.
+Corrected rather than deleted, because the *objective* is still reasonable - only the design is not.
+
+**The two constraints below cannot both hold:**
+
+> - Must work across **all repos** in the `caracal-lynx` organisation without per-repo configuration
+> - Workflow file must live in `caracal-lynx/.github` - the organisation's shared workflow repository
+
+A workflow in `caracal-lynx/.github` triggers **only on that repository's own events**. The
+`.github` repo propagates community health files (issue and PR templates, the profile README) and
+offers *opt-in* reusable workflows that each consumer must call with `uses:`. It does not broadcast
+workflow triggers to other repositories - there is no such mechanism in GitHub Actions.
+
+So "fires on every org repo's PR" and "lives in `.github` with no per-repo configuration" are
+mutually exclusive. That is almost certainly why this was never built.
+
+**What would actually work, if the objective is revived:**
+
+1. **A GitHub App or org-level webhook** - the only way to receive PR events org-wide from one
+   place. Real infrastructure: hosting, a secret, an install. Not "GitHub-native tooling with no
+   third-party Actions".
+2. **A reusable workflow each repo calls** - trivial with what already exists here, but it is
+   per-repo configuration by definition, so it fails the second constraint rather than the first.
+3. **Extend the PR templates**, which *do* propagate org-wide automatically and cost nothing. That
+   is how the dependency-review checklist already reaches every repo, via
+   `.github/PULL_REQUEST_TEMPLATE/dependency_change.md`. A checklist in the default
+   `PULL_REQUEST_TEMPLATE.md` would deliver most of this document's stated objective today.
+
+Option 3 is the cheapest and is blocked on nothing. The rest of this document is preserved as the
+original design record; do not treat it as a plan until the contradiction above is resolved.
 
 ---
 
