@@ -101,14 +101,19 @@ jobs:
         id: preflight
         shell: bash
         run: |
-          if [[ -n "$APP_ID" && -n "$PRIVATE_KEY" ]]; then
+          if [[ -n "$CLIENT_ID" && -n "$PRIVATE_KEY" ]]; then
             echo "use_app_token=true" >> "$GITHUB_OUTPUT"
           else
             echo "use_app_token=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::RELEASER_APP_ID or RELEASER_PRIVATE_KEY not configured — falling back to GITHUB_TOKEN. Release PRs may require manual approval before CI can run on them."
+            echo "::warning::RELEASER_CLIENT_ID or RELEASER_PRIVATE_KEY not configured — falling back to GITHUB_TOKEN. Release PRs may require manual approval before CI can run on them."
           fi
         env:
-          APP_ID: ${{ vars.RELEASER_APP_ID }}
+          # DAG 210: this MUST name the same variable the mint step consumes. It used to
+          # check RELEASER_APP_ID while the mint used it too. Now that the mint uses
+          # RELEASER_CLIENT_ID, a gate still testing APP_ID would go false the moment
+          # APP_ID is retired - skipping the mint and falling back to GITHUB_TOKEN behind
+          # nothing louder than a ::warning::. Releases would quietly stop using the App.
+          CLIENT_ID: ${{ vars.RELEASER_CLIENT_ID }}
           PRIVATE_KEY: ${{ secrets.RELEASER_PRIVATE_KEY }}
 
       - name: Mint caracal-lynx-releaser App token
@@ -116,7 +121,7 @@ jobs:
         if: steps.preflight.outputs.use_app_token == 'true'
         uses: actions/create-github-app-token@v3
         with:
-          app-id: ${{ vars.RELEASER_APP_ID }}
+          client-id: ${{ vars.RELEASER_CLIENT_ID }}
           private-key: ${{ secrets.RELEASER_PRIVATE_KEY }}
 
       - uses: actions/checkout@v7
