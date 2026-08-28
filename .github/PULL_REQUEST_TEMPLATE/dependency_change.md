@@ -1,7 +1,7 @@
 # 📦 Dependency Change PR
 
-> This template is for PRs that include changes to `pnpm-lock.yaml` / `package.json`
-> (or `package-lock.json` on the few npm repos). Select it by adding
+> This template is for PRs that include changes to `pnpm-lock.yaml`, `package.json` or
+> `pnpm-workspace.yaml`. Select it by adding
 > `?template=dependency_change.md` to the PR URL.
 
 ---
@@ -13,7 +13,7 @@
 - [ ] I added a new dependency
 - [ ] I updated an existing dependency
 - [ ] I removed a dependency
-- [ ] I ran `pnpm install` (or `npm install`) to regenerate the lock file
+- [ ] I ran `pnpm install` to regenerate the lock file
 - [ ] The lock file changed as a side-effect of something else (explain below)
 
 **Details:**
@@ -135,7 +135,7 @@
 
 ### Overall
 - [ ] I am satisfied this change is safe to merge
-- [ ] _(optional)_ I ran `pnpm install --frozen-lockfile` (or `npm ci`) locally and the build passes
+- [ ] _(optional)_ I ran `pnpm install --frozen-lockfile` locally and the build passes
 
 **Reviewer comments:**
 <!-- Add any comments, concerns, or questions here before submitting your review -->
