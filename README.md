@@ -21,6 +21,29 @@ for content that should only apply to private repos.
 | `CODEOWNERS` | Review ownership for **this repo only** (GitHub has no org-wide CODEOWNERS) |
 | `profile/README.md` | The org's public landing page at <https://github.com/caracal-lynx> |
 
+## Who consumes this
+
+Community files (issue templates, PR template, profile README) are inherited by **every**
+repo in the org automatically. The reusable workflows and the Renovate preset are opted
+into, and today that is:
+
+| Repo | `node-ci.yml` | `node-release.yml` | `renovate-config` |
+|---|---|---|---|
+| `data-gubbins` — the platform monorepo | yes | yes | yes |
+| `sluice-client-eribe` — client engagement | yes | no | yes |
+| every other active repo | no | no | yes |
+
+**The platform monorepo is the fuller consumer of the two, not an exception to them.**
+Worth stating because the opposite was written down: DAG 225 recorded that after the
+monorepo cutover these workflows "serve only client repos … the platform monorepo runs
+local workflows", and proposed slimming this repo to match. `data-gubbins/ci.yml` and
+`data-gubbins/release.yml` both call them, so acting on that would have removed presets
+and docs that the fleet's busiest repo depends on.
+
+The Renovate preset is extended by every active repo and carries fleet-wide holds — the
+`typescript <7.0.0` ceiling lives here, hoisted on 2026-07-24 so no repo could miss it
+(DAG 252). It is not per-repo configuration and must not be trimmed to one consumer.
+
 ## Consuming the workflows
 
 ### CI (every PR)
@@ -37,7 +60,7 @@ on:
 
 jobs:
   ci:
-    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.16.2
+    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.17.1
     with:
       node-version-file: .nvmrc   # preferred — the repo's own file is the source of truth
       os-matrix: '["ubuntu-latest", "windows-latest"]'
@@ -83,7 +106,7 @@ on:
 
 jobs:
   release:
-    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.16.2
+    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.17.1
     with:
       node-version-file: .nvmrc   # preferred — see note below
       package-manager: npm
@@ -98,10 +121,15 @@ jobs:
 - **npm Trusted Publisher configured** at `npmjs.com/package/<name>/access` —
   authorise this workflow by org + repo + filename. Without this, publishing
   fails at the `npm publish` step with a 403.
-- Optional but recommended: org vars `RELEASER_APP_ID` + secret
+- Optional but recommended: org var `RELEASER_CLIENT_ID` + secret
   `RELEASER_PRIVATE_KEY` for the `caracal-lynx-releaser` GitHub App. Without
   these the workflow falls back to `GITHUB_TOKEN`, which means release PRs
   may need manual approval before CI can run on them.
+  **It is `RELEASER_CLIENT_ID`, not `RELEASER_APP_ID`** — `create-github-app-token`
+  deprecated the `app-id` input, and both the mint step and the preflight that gates
+  it moved to the client id on 2026-08-28 (DAG 210). `RELEASER_APP_ID` still exists
+  only so consumers pinned below `v1.17.1` keep working; it will be deleted once no
+  reachable pin references it.
 
 **Registry read auth:** both `node-ci.yml` and `node-release.yml` always pass
 the inherited `NPM_READ_TOKEN` to every install/precheck step, so restricted
@@ -131,20 +159,25 @@ and immediate firing on vulnerability alerts.
 
 - **First-party GitHub Actions** (`actions/checkout`, `actions/setup-node`,
   `actions/upload-artifact`, `actions/create-github-app-token`) are referenced by
-  **major-version tag** (e.g. `actions/checkout@v6`). They're GitHub-owned (low
+  **major-version tag** (e.g. `actions/checkout@v7`). They're GitHub-owned (low
   supply-chain risk) and Renovate keeps them bumped weekly.
 - **Third-party actions** (`pnpm/action-setup`, `changesets/action`,
   `linear/linear-release-action`) are pinned to a **full commit SHA** with a
-  `# vX.Y.Z` comment (e.g. `pnpm/action-setup@0ebf47…271 # v6.0.9`). The SHA
+  `# vX.Y.Z` comment (e.g. `pnpm/action-setup@0977fd9…999 # v6.0.10`). The SHA
   defends against tag
   re-pointing; the comment lets Renovate read the version intent and bump the
   SHA + comment together. Per `[SEC-?]` of the company TypeScript standards, and
   the policy comment at the top of each workflow (DAG-78).
-- **Consumers pin this repo's workflows to an exact tag** — `@v1.16.2`, not `@v1`
+- **Consumers pin this repo's workflows to an exact tag** — `@v1.17.1`, not `@v1`
   and not `@master`. Renovate raises a PR when a new tag lands, so the bump is
   reviewed in the consumer's own CI rather than arriving unannounced. There is no
   `main` branch here; the default branch is `master`, and pinning to it would give
   every consumer whatever happened to be merged that morning.
+- **The pins in this file are maintained by hand; the ones in `workflow-templates/` are
+  not.** Renovate bumps a `uses:` reference in YAML but cannot parse a fenced code block
+  in Markdown, so the examples above drift while the templates stay current. They had
+  reached `v1.16.2` against a live `v1.17.1` — three tags behind — while the templates
+  were one patch behind and self-correcting. If you cut a tag, update this file too.
 
 ## Releasing this repo
 
@@ -157,8 +190,8 @@ you just merged.
 ```powershell
 git -C C:
 git -C C:\repos\.github fetch origin --tags
-git log --oneline v1.16.2..master     # every commit the next tag would ship
-git diff --stat v1.16.2..master
+git log --oneline v1.17.1..master     # every commit the next tag would ship
+git diff --stat v1.17.1..master
 ```
 
 This is not hypothetical. `v1.16.0` was cut to release `node-version-file` (#51)
@@ -193,9 +226,19 @@ the picker, gated on the repo containing a `package.json`.
 
 ## Related Linear issues
 
-- **DAG-52** — Implement Recommendations from dev pipeline session (parent)
-- **DAG-63** — Create caracal-lynx/.github repo with reusable workflows (this)
-- **DAG-73** — Wire Sluice to use the central reusable workflow (pilot consumer)
-- **DAG-75** — Roll out central CI to remaining Data Gubbins repos
-- **DAG-76** — Add CI check that fails PRs touching `src/` without a changeset
-  (will fold into `node-ci.yml` as an opt-in input once piloted on Sluice)
+History (all delivered): **DAG 63** created this repo, **DAG 73** piloted it on Sluice,
+**DAG 75** rolled it to the rest of the fleet, and **DAG 76**'s changeset gate shipped as
+the `require-changeset` input rather than remaining a separate check.
+
+Live constraints a reader of this file should know about:
+
+- **DAG 78** — the pinning policy in "Pinning & versioning" above. First-party actions on
+  major tags, third-party on SHAs. Settled again on 2026-08-28 after `.github-private`
+  had drifted to a stricter policy while citing this one.
+- **DAG 326 / DAG 327** — why `smoke.yml` exists: this repo's own reusable workflows are
+  executed on every PR, because a tag here is a fleet-wide release.
+- **DAG 329** — the known gap in that smoke test. It cannot reach `node-release.yml`'s
+  App-token and publish-path expressions, so those lines are linted but not executed.
+- **DAG 359** — the Renovate preset's holds are asserted from `data-gubbins`, not from
+  here. A hold added to `renovate-config.json` binds only if the consuming repo's
+  manifest range already excludes everything above the ceiling.
