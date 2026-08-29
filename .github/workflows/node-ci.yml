@@ -387,13 +387,74 @@ jobs:
             npx --no-install changeset status --since="origin/${BASE}" --verbose
           fi
 
+  branch-name:
+    name: Branch name
+    # Enforces git/branch-naming-standard.md (caracal-lynx/standards). PR-only:
+    # a push to master has no head ref, and the default branch is exempt anyway.
+    #
+    # Why a separate job rather than a step inside ci-success, which is where the
+    # node-version guard lives: ci-success `needs:` every other job, so a step there
+    # reports a bad branch name only after the whole matrix has run. This job names
+    # itself in the checks list in about ten seconds. The reason the node-version
+    # guard is inline — that a guard job would serialise the start of every run —
+    # does not apply here, because nothing `needs:` this job except ci-success.
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name against the naming standard
+        shell: pwsh
+        # pwsh, not bash, on purpose: the pre-push hook in each repo runs this same
+        # pattern under .NET regex. One dialect, two copies that can be diffed
+        # literally. A grep -P port would drift on the (?i:) group first.
+        env:
+          # Never interpolate ${{ github.head_ref }} straight into the script body.
+          # Git allows quotes, backticks and $ in a ref name, so a branch could inject
+          # PowerShell. Through env: it is data.
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          $branch = $env:HEAD_REF
+
+          # Bots name their own branches. Exempt each one explicitly on the day it is
+          # installed (standard section 7) rather than skipping every bot author:
+          # an explicit list fails CLOSED, so a new bot's PRs go red and someone adds
+          # the prefix. Skipping on user.type == 'Bot' would fail open and silently
+          # exempt every future bot from the standard.
+          #   renovate/**          - Renovate (Mend app)
+          #   changeset-release/** - changesets/action, via the caracal-lynx-releaser
+          #                          app. 9 of the last 100 data-gubbins PRs. Without
+          #                          this, every release PR reds the required check.
+          $botPrefixes = @('renovate/*', 'changeset-release/*')
+
+          $pattern = '^(?:(?:feat|feature|fix|perf|hotfix)/(?i:DAG|BCG)-\d+-[a-z0-9][a-z0-9._-]*|(?:refactor|docs|test|chore|ci|spike)/(?:(?i:DAG|BCG)-\d+-)?[a-z0-9][a-z0-9._-]*|release/v\d+\.\d+\.\d+)$'
+
+          foreach ($p in $botPrefixes) {
+            if ($branch -like $p) {
+              Write-Host "Branch '$branch' matches the bot prefix '$p' - exempt."
+              exit 0
+            }
+          }
+
+          # -cnotmatch, not -notmatch: PowerShell matches case-INSENSITIVELY by
+          # default, which would leave the lower-case slug rule and the closed prefix
+          # list unenforced. Only the issue key is deliberately lax, via (?i:).
+          if ($branch -cnotmatch $pattern) {
+            Write-Host "::error::Branch '$branch' does not match the branch naming standard."
+            Write-Host "  feat|feature|fix|perf|hotfix  require an issue key:  feat/DAG-142-parquet-writer"
+            Write-Host "  refactor|docs|test|chore|ci|spike             key optional"
+            Write-Host "  release/v1.4.0"
+            Write-Host "  Slug must be lower case. See caracal-lynx/standards git/branch-naming-standard.md."
+            exit 1
+          }
+
+          Write-Host "Branch '$branch' matches the naming standard."
+
   ci-success:
     name: CI success
     # Single stable status check for branch-protection rulesets: green only when
     # every CI job above succeeded. Lets org rulesets require one context
     # ("ci / CI success") instead of brittle per-job/matrix names. See DAG-67.
     if: always()
-    needs: [lint, format, typecheck, test, build, security, changeset-required]
+    needs: [lint, format, typecheck, test, build, security, changeset-required, branch-name]
     runs-on: ubuntu-latest
     steps:
       - name: Exactly one of node-version / node-version-file must be set
