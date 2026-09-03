@@ -1,6 +1,13 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "description": [
+    "This repo is itself a pnpm repo — pnpm-lock.yaml plus a packageManager pin, for the workflow smoke fixture (DAG-326) — so it extends the pnpm preset as well as the base one. It had not since DAG-144 created that preset, in the repo the preset lives in (DAG-372).",
+    "Order matters: renovate-config-pnpm MUST come second so its settings win. It supplies minimumReleaseAge '3 days' and rangeStrategy 'update-lockfile'.",
+    "minimumReleaseAge is the one with teeth. pnpm 11 enables a 1-day minimumReleaseAge by default and RE-VALIDATES it on `pnpm install --frozen-lockfile`, so a PR raised the instant a release drops fails CI with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION until it ages out. This repo has no pnpm-workspace.yaml and no .npmrc, so pnpm's own default applied with nothing on the Renovate side to clear it. Nothing had broken yet purely because every recent bump happened to be over a day old when Renovate raised it — #75 carried no renovate/stability-days check at all while every data-gubbins and eribe PR in the same wave did.",
+    "rangeStrategy is the milder half. The preset's stated reason for 'update-lockfile' is that 'bump' desyncs the importer specifier for NON-ROOT workspace members; this repo is a single package with no workspace, so that failure cannot occur here. What it does stop is gratuitous floor-raising: #75 bumped engines.pnpm alongside packageManager, where the two preset-covered repos touched only packageManager."
+  ],
   "extends": [
-    "local>caracal-lynx/.github:renovate-config"
+    "local>caracal-lynx/.github:renovate-config",
+    "local>caracal-lynx/.github:renovate-config-pnpm"
   ]
 }
