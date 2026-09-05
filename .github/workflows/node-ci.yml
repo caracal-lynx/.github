@@ -244,13 +244,90 @@ jobs:
           node-version: ${{ inputs.node-version }}
           node-version-file: ${{ inputs.node-version-file }}
       - name: npm audit — production dependencies (blocking)
-        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --prod --audit-level=high' || 'npm audit --omit=dev --audit-level=high' }}
+        # DAG-373. Both `pnpm audit` and `npm audit` exit 1 for "found a blocking
+        # advisory" AND for "could not reach the advisory service", so an npm incident
+        # presented as a security failure. On 2026-09-04 that failed PR #145 three
+        # times in 40 minutes and then reddened data-gubbins' master for ~28h, while
+        # the same command run locally in the same window exited 0.
+        #
+        # The discriminator is NOT the exit code and NOT the error string — it is
+        # whether the tool produced a verdict at all. Every audit that reached the
+        # service prints the word "vulnerabilit(y|ies)"; a transport failure prints
+        # only [WARN] retry lines and a TimeoutError. Keying on the verdict rather
+        # than on a list of error codes means a new transport error class needs no
+        # change here.
+        #
+        # FAIL CLOSED, and this is the property that matters: BOTH failure branches
+        # exit 1. Misclassifying a real finding as transport costs three retries and a
+        # less precise message — it can never turn a red gate green. [SEC-05] is
+        # intact; the step only explains itself better. Do NOT add `|| true` or
+        # `continue-on-error` here (DAG-373, "Explicitly not the fix").
+        #
+        # The retry shape resolves DAG-373's own tension between "retry longer" (1)
+        # and "fail fast" (3): each ATTEMPT is capped below pnpm's ~4-minute internal
+        # budget, and the time is spent on MORE attempts across a wider window
+        # instead. An audit that succeeds on pnpm's first internal retry takes ~72s,
+        # so 120s keeps every realistic success and truncates the doomed ones.
+        shell: bash
+        env:
+          AUDIT_CMD: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --prod --audit-level=high' || 'npm audit --omit=dev --audit-level=high' }}
+          ATTEMPTS: "3"
+          ATTEMPT_TIMEOUT: "120"
+        run: |
+          # Indexed per attempt; the `:-` default keeps this correct if ATTEMPTS grows.
+          backoff=(30 60)
+
+          for i in $(seq 1 "$ATTEMPTS"); do
+            echo "::group::Audit attempt $i of $ATTEMPTS — $AUDIT_CMD"
+            set +e
+            out=$(timeout --kill-after=15s "${ATTEMPT_TIMEOUT}s" bash -c "$AUDIT_CMD" 2>&1)
+            code=$?
+            set -e
+            printf '%s\n' "$out"
+            echo "::endgroup::"
+
+            if [ "$code" -eq 0 ]; then
+              echo "Production dependencies are clean at the blocking threshold (high)."
+              exit 0
+            fi
+
+            # Herestring, not a pipe: under `pipefail` a `printf | grep -q` pipeline
+            # reports grep's early exit as SIGPIPE (141) and the match is lost.
+            if grep -qi 'vulnerabilit' <<<"$out"; then
+              echo "::error title=Blocking advisory in production dependencies::The advisory service answered and reported a vulnerability at or above 'high' in production dependencies (exit $code). This is a real finding [SEC-05] — patch, bump, or add a bounded override. Do not bypass this gate."
+              exit 1
+            fi
+
+            if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
+              reason="produced no response within ${ATTEMPT_TIMEOUT}s"
+            else
+              reason="exited $code without producing a verdict"
+            fi
+            echo "::warning title=Advisory service did not answer::Attempt $i $reason. Treating this as transport, not as a security finding."
+
+            if [ "$i" -lt "$ATTEMPTS" ]; then
+              wait_for="${backoff[$((i - 1))]:-60}"
+              echo "Retrying in ${wait_for}s."
+              sleep "$wait_for"
+            fi
+          done
+
+          echo "::error title=Could not reach the npm advisory service::Ran '$AUDIT_CMD' $ATTEMPTS times and never got a verdict, so the production dependency tree is UNVERIFIED. This is NOT a report of a vulnerability. Check https://status.npmjs.org, then re-run this job. If npm is healthy and this persists, the failure is real — see DAG-373."
+          exit 1
+
       - name: npm audit — full dependency tree (report-only, non-blocking)
         # Dev/build-tool CVEs are surfaced here for visibility (and tracked by
         # Renovate vulnerabilityAlerts) but do NOT block releases — only vulns
         # in shipped/production deps gate. See DAG-67.
+        #
+        # Capped by the same per-attempt timeout but deliberately NOT retried: this
+        # step is advisory. Before DAG-373 it ran after the blocking step and burned a
+        # further ~4 minutes against an endpoint already known to be unreachable.
         if: always()
-        run: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --audit-level=high || true' || 'npm audit --audit-level=high || true' }}
+        shell: bash
+        env:
+          AUDIT_CMD: ${{ inputs.package-manager == 'pnpm' && 'pnpm audit --audit-level=high' || 'npm audit --audit-level=high' }}
+        run: timeout --kill-after=15s 120s bash -c "$AUDIT_CMD" || true
 
   changeset-required:
     name: Changeset required
