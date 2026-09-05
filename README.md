@@ -60,7 +60,7 @@ on:
 
 jobs:
   ci:
-    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.18.0
+    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.19.0
     with:
       node-version-file: .nvmrc   # preferred — the repo's own file is the source of truth
       os-matrix: '["ubuntu-latest", "windows-latest"]'
@@ -106,7 +106,7 @@ on:
 
 jobs:
   release:
-    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.18.0
+    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.19.0
     with:
       node-version-file: .nvmrc   # preferred — see note below
       package-manager: npm
@@ -168,7 +168,7 @@ and immediate firing on vulnerability alerts.
   re-pointing; the comment lets Renovate read the version intent and bump the
   SHA + comment together. Per `[SEC-?]` of the company TypeScript standards, and
   the policy comment at the top of each workflow (DAG-78).
-- **Consumers pin this repo's workflows to an exact tag** — `@v1.18.0`, not `@v1`
+- **Consumers pin this repo's workflows to an exact tag** — `@v1.19.0`, not `@v1`
   and not `@master`. Renovate raises a PR when a new tag lands, so the bump is
   reviewed in the consumer's own CI rather than arriving unannounced. There is no
   `main` branch here; the default branch is `master`, and pinning to it would give
@@ -188,10 +188,9 @@ you just merged.
 **Diff before you tag:**
 
 ```powershell
-git -C C:
 git -C C:\repos\.github fetch origin --tags
-git log --oneline v1.18.0..master     # every commit the next tag would ship
-git diff --stat v1.18.0..master
+git -C C:\repos\.github log --oneline v1.19.0..master   # every commit the next tag would ship
+git -C C:\repos\.github diff --stat v1.19.0..master
 ```
 
 This is not hypothetical. `v1.16.0` was cut to release `node-version-file` (#51)
