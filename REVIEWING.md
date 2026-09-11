@@ -31,7 +31,7 @@ It looks like boring YAML. It isn't. 🙂
 | --- | --- | --- | --- |
 | `package.json` | You | Declare intent (`^1.2.0`) | ✅ Yes — but see below |
 | `pnpm-lock.yaml` | pnpm | Lock exact versions (`1.2.7`) | 🚫 Never |
-| `pnpm-workspace.yaml` | You | Workspace globs, `overrides`, `allowBuilds`, `catalog`, `minimumReleaseAge` | ✅ Yes — **and it is security-relevant** |
+| `pnpm-workspace.yaml` | You (pnpm can also write `minimumReleaseAgeExclude`) | Workspace globs, `overrides`, `allowBuilds`, `catalog`, `minimumReleaseAge`, `minimumReleaseAgeStrict`, `minimumReleaseAgeExclude` | ✅ Yes — **and it is security-relevant** (Check 8) |
 
 **Renovate owns version bumps** (`[DEP-01]`). A hand-edited version range in `package.json` is
 itself a review finding unless the PR explains why Renovate could not do it — a deliberately
@@ -110,6 +110,12 @@ For every newly added package:
 releases, deliberately matching Renovate's own age gate. A PR that **lowers or removes** it is
 removing a supply-chain control and needs to justify itself.
 
+The gate is not airtight. An entry in `minimumReleaseAgeExclude` switches it off for that package,
+in CI as well as locally. pnpm 12 repos run with `minimumReleaseAgeStrict: false` (DAG-376), so a
+local install that has to pick a too-young version adds a `name@version` entry **without asking**.
+A new package that arrives alongside a new exclude entry is exactly the case this check exists
+for — see Check 8.
+
 ---
 
 ## Check 3 — Version changes
@@ -185,10 +191,12 @@ highest-leverage file in the repo.
 
 | Key | What a change means |
 | --- | --- |
-| `overrides` | Hand-managed transitive-vulnerability pins. Removing one regresses `pnpm audit --prod`. Verify the chain is genuinely gone; do not assume. |
+| `overrides` | Hand-managed transitive-vulnerability pins. Removing one regresses `pnpm audit --prod`. Verify the chain is genuinely gone; do not assume. **An override must not apply to a range a workspace package declares directly**: pnpm 12's `pnpm update --no-save` writes the manifest range back over the specifier the override set, and every in-range Renovate lockfile then fails `--frozen-lockfile` with `ERR_PNPM_OUTDATED_LOCKFILE` (DAG-376, pnpm/pnpm#14836). Plain and selector overrides both do this. |
 | `catalog` | One entry governs **every** package that declares `catalog:`. A bump here moves them all at once. |
 | `allowBuilds` | Permits a package to run install scripts. Adding one grants arbitrary code execution at install time — treat it as a security change. |
 | `minimumReleaseAge` | The supply-chain age gate. Lowering it is a control change. |
+| `minimumReleaseAgeStrict` | Set to `false` in pnpm 12 repos (DAG-376). pnpm 12's strict mode rejects `pnpm update --no-save`, which Renovate runs for every in-range update, security fixes included. Deleting the line or setting it to `true` breaks Renovate's lockfile updates. The revert is planned for when pnpm/pnpm#14835 is fixed — until then, question any PR that changes it. |
+| `minimumReleaseAgeExclude` | Each entry switches the age gate off for what it matches — **in CI too**. Pattern entries for first-party scopes (`@caracal-lynx/*`) are deliberate. A **new `name@version` entry** is usually pnpm writing it silently during a local install, because strict mode is off: reject it unless the PR explains why. Renovate's security PRs add commented `name@version` entries on purpose. A CI guard is planned (DAG-380). |
 
 A `catalog:` entry that is **narrowed** deserves particular attention: the catalog is deliberately
 set to the _lowest_ live range so adoption raises nobody's floor, and tightening it can freeze a
@@ -207,6 +215,8 @@ package out of security patches.
 | Integrity hash mismatch | _"The integrity hash changed without a version change — this needs investigation before merging."_ |
 | Hand-edited range | _"Renovate owns version bumps (`[DEP-01]`). What stopped it doing this one?"_ |
 | `overrides` entry removed | _"Has `pnpm audit --prod` been re-run? These overrides are hand-managed and dropping one regresses the audit."_ |
+| New `name@version` in `minimumReleaseAgeExclude` | _"This entry turns the release-age gate off for that version, in CI too. Did pnpm add it during a local install? If it's deliberate, say why; otherwise drop it and let the version mature."_ |
+| `minimumReleaseAgeStrict` changed or removed | _"Strict mode breaks Renovate's lockfile updates on pnpm 12 (DAG-376). Has pnpm/pnpm#14835 been fixed?"_ |
 
 ---
 
