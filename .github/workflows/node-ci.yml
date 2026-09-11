@@ -546,13 +546,120 @@ jobs:
 
           Write-Host "Branch '$branch' matches the naming standard."
 
+  release-age-excludes:
+    name: Release-age excludes
+    # DAG-380. Fails a PR that ADDS a version-pinned entry (`name@version`) to
+    # minimumReleaseAgeExclude in pnpm-workspace.yaml, unless Renovate opened the PR
+    # or it carries the `release-age-exclude-approved` label.
+    #
+    # Why: pnpm 12 repos run with minimumReleaseAgeStrict: false (DAG-376), because
+    # strict mode rejects the `pnpm update --no-save` that Renovate runs for every
+    # in-range update. Without strict mode, a LOCAL `pnpm install` or `pnpm add` that
+    # has to pick a version younger than minimumReleaseAge installs it and writes
+    # `name@version` into minimumReleaseAgeExclude, without a prompt. Once that line is
+    # committed, the `--frozen-lockfile` install in every job above reads the same
+    # exclude list and accepts the too-young version. The DAG-206 age gate is switched
+    # off for that package and nothing goes red. Only this job sees it.
+    #
+    # Deliberately NOT flagged:
+    #   - Pattern entries such as `@caracal-lynx/*`: hand-written policy, not pnpm output.
+    #   - Entries already on the base branch: only what this PR adds is checked.
+    #   - Renovate's PRs. From its pnpm runs Renovate commits only the lockfile, plus
+    #     a commented `name@version` entry on vulnerability-alert upgrades whose fix is
+    #     younger than the gate (updatePnpmWorkspace in renovate's
+    #     lib/modules/manager/npm/artifacts.ts). That entry is the intended exemption.
+    #     The author is matched on the exact login `renovate[bot]` (the `user.login`
+    #     on data-gubbins#148 and sluice-client-eribe#140), NOT on user.type == 'Bot'.
+    #     That check would fail open for every future bot, for the same reason
+    #     branch-name keeps an explicit prefix list.
+    #
+    # A separate job for the same reason as branch-name: nothing needs it except
+    # ci-success, so it reports in seconds without delaying any other job. No
+    # setup-node and no install: yq ships on ubuntu-latest (4.x, per the runner-images
+    # readme), and yq is all this needs.
+    #
+    # The label is read from the event payload, and adding a label does not re-run
+    # this job (`labeled` is not a default pull_request activity type). After
+    # labelling, re-run the job or push again.
+    if: ${{ github.event_name == 'pull_request' && inputs.package-manager == 'pnpm' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Reject new version-pinned minimumReleaseAgeExclude entries
+        shell: bash
+        env:
+          BASE: ${{ github.base_ref }}
+          # Through env:, never interpolated into the script body (see branch-name).
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          APPROVED: ${{ contains(github.event.pull_request.labels.*.name, 'release-age-exclude-approved') }}
+          WORKSPACE_FILE: pnpm-workspace.yaml
+        run: |
+          set -euo pipefail
+
+          # First, so this repo's Smoke run proves yq exists even though the fixture
+          # has no pnpm-workspace.yaml and exits at the next check.
+          echo "yq: $(yq --version)"
+
+          if [ ! -f "$WORKSPACE_FILE" ]; then
+            echo "No $WORKSPACE_FILE at the PR head, so there is no exclude list to check."
+            exit 0
+          fi
+
+          # One entry per line, trimmed, blanks dropped, sorted for comm. `// []`
+          # covers a missing key and an empty file alike.
+          entries() {
+            yq '(.minimumReleaseAgeExclude // []) | .[]' \
+              | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' -e '/^$/d' \
+              | sort -u
+          }
+
+          head_list=$(entries < "$WORKSPACE_FILE")
+          base_list=""
+          if git cat-file -e "origin/${BASE}:${WORKSPACE_FILE}" 2>/dev/null; then
+            base_list=$(git show "origin/${BASE}:${WORKSPACE_FILE}" | entries)
+          fi
+
+          added=$(comm -13 <(printf '%s\n' "$base_list" | sed '/^$/d') \
+                           <(printf '%s\n' "$head_list" | sed '/^$/d'))
+
+          # Version-pinned means an `@` after the package name: `left-pad@1.3.0`,
+          # `@scope/pkg@1.0.0 || 1.0.1`. `@caracal-lynx/*` and bare `left-pad` are not.
+          pinned=$(grep -E '^@?[^@]+@' <<<"$added" || true)
+
+          if [ -z "$pinned" ]; then
+            echo "This PR adds no version-pinned entries to minimumReleaseAgeExclude."
+            exit 0
+          fi
+
+          echo "Version-pinned entries this PR adds to minimumReleaseAgeExclude:"
+          while IFS= read -r entry; do printf '  %s\n' "$entry"; done <<<"$pinned"
+
+          if [ "$PR_AUTHOR" = "renovate[bot]" ]; then
+            echo "::notice title=Release-age excludes::Renovate opened this PR. Its vulnerability-alert updates add these entries on purpose; review them with the fix."
+            exit 0
+          fi
+
+          if [ "$APPROVED" = "true" ]; then
+            echo "::notice title=Release-age excludes::Allowed by the release-age-exclude-approved label. The PR description must say why each entry is needed."
+            exit 0
+          fi
+
+          while IFS= read -r entry; do
+            [ -n "$entry" ] || continue
+            line=$(grep -nF -- "$entry" "$WORKSPACE_FILE" | head -n 1 | cut -d: -f1 || true)
+            echo "::error file=${WORKSPACE_FILE},line=${line:-1},title=New version-pinned release-age exclude::'${entry}' switches off the release-age gate for that version, in CI too: every --frozen-lockfile install accepts it even if it is younger than minimumReleaseAge. pnpm adds entries like this without asking when a local install has to pick a too-young version, because minimumReleaseAgeStrict is false (DAG-376). Remove it and let the version mature. If it is deliberate, say why in the PR, add the release-age-exclude-approved label, then re-run this job."
+          done <<<"$pinned"
+          exit 1
+
   ci-success:
     name: CI success
     # Single stable status check for branch-protection rulesets: green only when
     # every CI job above succeeded. Lets org rulesets require one context
     # ("ci / CI success") instead of brittle per-job/matrix names. See DAG-67.
     if: always()
-    needs: [lint, format, typecheck, test, build, security, changeset-required, branch-name]
+    needs: [lint, format, typecheck, test, build, security, changeset-required, branch-name, release-age-excludes]
     runs-on: ubuntu-latest
     steps:
       - name: Exactly one of node-version / node-version-file must be set
