@@ -12,7 +12,7 @@ for content that should only apply to private repos.
 
 | Path | Purpose |
 |---|---|
-| `.github/workflows/node-ci.yml` | Reusable CI for Node/TypeScript packages — lint, typecheck, test (matrix), build, audit |
+| `.github/workflows/node-ci.yml` | Reusable CI for Node/TypeScript packages — lint, format, typecheck, test (matrix), build, audit, changeset gate, branch name, and (pnpm) release-age excludes, all behind `ci / CI success` |
 | `.github/workflows/node-release.yml` | Reusable release flow — Changesets PR + npm publish via Trusted Publishing (OIDC) |
 | `renovate-config.json` | Shared Renovate preset (extend with `local>caracal-lynx/.github:renovate-config`) |
 | `workflow-templates/` | Templates that appear in the "New workflow" picker for every org repo |
@@ -91,6 +91,23 @@ omitting it silently pinned a consumer below every current repo's `engines.node`
 
 **Required scripts in the consumer's `package.json`:** `lint`, `typecheck`,
 `build`, `test` (and `test:cov` if `coverage: true`).
+
+### pnpm: new version-pinned release-age excludes fail CI
+
+With `package-manager: pnpm`, the **Release-age excludes** job, which is part of `ci / CI success`,
+fails any PR that adds a `name@version` entry to `minimumReleaseAgeExclude` in
+`pnpm-workspace.yaml` (DAG-380). An entry like that switches pnpm's release-age gate off
+for that version in every `--frozen-lockfile` install. With `minimumReleaseAgeStrict: false`
+(DAG-376), pnpm writes one without asking whenever a local install has to pick a
+too-young version.
+
+- **Not affected:** pattern entries such as `@caracal-lynx/*`, and entries already on the
+  base branch.
+- **Exempt:** Renovate's PRs. Its vulnerability-alert updates add such entries on purpose.
+- **Deliberate entry:** say why in the PR and add the `release-age-exclude-approved` label
+  (create it in the repo the first time). Then **push a new commit**; an empty one is fine.
+  Adding a label does not start CI, and **re-running the failed job does not work**: a
+  re-run reuses the original event, which carries no label.
 
 ### Release (push to default branch)
 
