@@ -250,18 +250,28 @@ jobs:
         # times in 40 minutes and then reddened data-gubbins' master for ~28h, while
         # the same command run locally in the same window exited 0.
         #
-        # The discriminator is NOT the exit code and NOT the error string — it is
-        # whether the tool produced a verdict at all. Every audit that reached the
-        # service prints the word "vulnerabilit(y|ies)"; a transport failure prints
-        # only [WARN] retry lines and a TimeoutError. Keying on the verdict rather
-        # than on a list of error codes means a new transport error class needs no
-        # change here.
+        # Three outcomes, tested in this order:
         #
-        # FAIL CLOSED, and this is the property that matters: BOTH failure branches
-        # exit 1. Misclassifying a real finding as transport costs three retries and a
-        # less precise message — it can never turn a red gate green. [SEC-05] is
-        # intact; the step only explains itself better. Do NOT add `|| true` or
-        # `continue-on-error` here (DAG-373, "Explicitly not the fix").
+        #   1. VERDICT. Every audit that reached the service prints "vulnerabilit(y|ies)".
+        #      Exit 1, not retried: a finding does not go away if you ask again.
+        #   2. TRANSPORT. The output carries a positive network signature (`transport`
+        #      below), or `timeout` killed the attempt. Retried.
+        #   3. NEITHER. The audit never ran — a missing lockfile, an option the package
+        #      manager no longer accepts, a config error. Exit 1 at once, not retried.
+        #
+        # v1.19.0 keyed on the verdict alone, so (3) fell into (2): a missing lockfile was
+        # retried for ~8 minutes and then blamed on npm's status page. pnpm 12 rejects
+        # unknown flags outright, so a flag rename in a Renovate-merged pnpm major would
+        # have read as an npm outage across the whole fleet (DAG-377). The cost of the
+        # split is deliberate: a transport error class missing from the pattern now fails
+        # on its first attempt instead of being retried — still closed, and the message
+        # says where to add it.
+        #
+        # FAIL CLOSED, and this is the property that matters: ALL THREE failure branches
+        # exit 1. Misclassification costs retries or a less precise message — it can
+        # never turn a red gate green. [SEC-05] is intact; the step only explains itself
+        # better. Do NOT add `|| true` or `continue-on-error` here (DAG-373, "Explicitly
+        # not the fix").
         #
         # The retry shape resolves DAG-373's own tension between "retry longer" (1)
         # and "fail fast" (3): each ATTEMPT is capped below pnpm's ~4-minute internal
@@ -276,6 +286,14 @@ jobs:
         run: |
           # Indexed per attempt; the `:-` default keeps this correct if ATTEMPTS grows.
           backoff=(30 60)
+
+          # Positive evidence that the advisory service was not reached. Captured from real
+          # output on 2026-09-11 (DAG-377) unless marked otherwise:
+          #   pnpm 12  ERR_PNPM_AUDIT_BAD_RESPONSE — HTTP 503 and TCP connect refused alike
+          #   pnpm 11  "error (503)" retry lines, TimeoutError — DAG-373's CI log, 2026-09-04
+          #   npm 11   "audit endpoint returned an error" — HTTP 503 and ECONNREFUSED alike
+          #   Node     errno names and "socket hang up" — listed, not each reproduced
+          transport='ERR_PNPM_AUDIT_BAD_RESPONSE|error \(5[0-9]{2}\)|TimeoutError|audit endpoint returned an error|ETIMEDOUT|ECONNRESET|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|ENETUNREACH|socket hang up'
 
           for i in $(seq 1 "$ATTEMPTS"); do
             echo "::group::Audit attempt $i of $ATTEMPTS — $AUDIT_CMD"
@@ -300,8 +318,11 @@ jobs:
 
             if [ "$code" -eq 124 ] || [ "$code" -eq 137 ]; then
               reason="produced no response within ${ATTEMPT_TIMEOUT}s"
+            elif grep -qiE "$transport" <<<"$out"; then
+              reason="could not reach the advisory service (exit $code)"
             else
-              reason="exited $code without producing a verdict"
+              echo "::error title=Audit did not run::'$AUDIT_CMD' exited $code with neither a verdict nor a recognised network error, so the production dependency tree is UNVERIFIED. Not retried: this looks deterministic, and re-running would only delay the same failure. The cause is in the output above — typically a missing lockfile, or an option the package manager no longer accepts after an upgrade. If it is in fact a network error, add its signature to the transport pattern in node-ci.yml (DAG-377)."
+              exit 1
             fi
             echo "::warning title=Advisory service did not answer::Attempt $i $reason. Treating this as transport, not as a security finding."
 
