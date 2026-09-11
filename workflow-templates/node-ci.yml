@@ -16,7 +16,7 @@ jobs:
   ci:
     uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.19.0
     with:
-      node-version: "24.16.0"
+      node-version-file: .nvmrc   # commit an .nvmrc — the repo's own file is the source of truth
       os-matrix: '["ubuntu-latest", "windows-latest"]'
       package-manager: pnpm
       coverage: false
