@@ -169,9 +169,9 @@ This is a **cryptographic hash** of the package tarball.
 
 ## Check 7 — Lock file and toolchain
 
-- `lockfileVersion: '9.0'` is current for pnpm 9 through 11.
+- `lockfileVersion: '9.0'` is current: pnpm 9 introduced it, and pnpm 12, the fleet's pin, still writes it.
 - A **downgrade** may mean someone ran an older pnpm than the repo's pin.
-- The pin lives in `package.json` `packageManager` (e.g. `pnpm@11.23.0`) and is the single source of
+- The pin lives in `package.json` `packageManager` (e.g. `pnpm@12.3.4`) and is the single source of
   truth for local and CI (`[DEP-08]`). A PR changing it changes the toolchain for everyone.
 - Only one lock file format should exist — a `package-lock.json` or `yarn.lock` appearing alongside
   `pnpm-lock.yaml` means someone ran the wrong package manager.
