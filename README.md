@@ -105,8 +105,9 @@ too-young version.
   base branch.
 - **Exempt:** Renovate's PRs. Its vulnerability-alert updates add such entries on purpose.
 - **Deliberate entry:** say why in the PR and add the `release-age-exclude-approved` label
-  (create it in the repo the first time). Then **re-run the job**, because adding a label
-  does not re-trigger CI.
+  (create it in the repo the first time). Then **push a new commit**; an empty one is fine.
+  Adding a label does not start CI, and **re-running the failed job does not work**: a
+  re-run reuses the original event, which carries no label.
 
 ### Release (push to default branch)
 
