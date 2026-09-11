@@ -60,7 +60,7 @@ on:
 
 jobs:
   ci:
-    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.19.0
+    uses: caracal-lynx/.github/.github/workflows/node-ci.yml@v1.20.1
     with:
       node-version-file: .nvmrc   # preferred — the repo's own file is the source of truth
       os-matrix: '["ubuntu-latest", "windows-latest"]'
@@ -106,7 +106,7 @@ on:
 
 jobs:
   release:
-    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.19.0
+    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.20.1
     with:
       node-version-file: .nvmrc   # preferred — see note below
       package-manager: npm
@@ -163,12 +163,12 @@ and immediate firing on vulnerability alerts.
   supply-chain risk) and Renovate keeps them bumped weekly.
 - **Third-party actions** (`pnpm/action-setup`, `changesets/action`,
   `linear/linear-release-action`) are pinned to a **full commit SHA** with a
-  `# vX.Y.Z` comment (e.g. `pnpm/action-setup@0977fd9…999 # v6.0.10`). The SHA
+  `# vX.Y.Z` comment (e.g. `pnpm/action-setup@ea17c68…d413 # v6.1.0`). The SHA
   defends against tag
   re-pointing; the comment lets Renovate read the version intent and bump the
   SHA + comment together. Per `[SEC-?]` of the company TypeScript standards, and
   the policy comment at the top of each workflow (DAG-78).
-- **Consumers pin this repo's workflows to an exact tag** — `@v1.19.0`, not `@v1`
+- **Consumers pin this repo's workflows to an exact tag** — `@v1.20.1`, not `@v1`
   and not `@master`. Renovate raises a PR when a new tag lands, so the bump is
   reviewed in the consumer's own CI rather than arriving unannounced. There is no
   `main` branch here; the default branch is `master`, and pinning to it would give
@@ -189,8 +189,8 @@ you just merged.
 
 ```powershell
 git -C C:\repos\.github fetch origin --tags
-git -C C:\repos\.github log --oneline v1.19.0..master   # every commit the next tag would ship
-git -C C:\repos\.github diff --stat v1.19.0..master
+git -C C:\repos\.github log --oneline v1.20.1..origin/master   # every commit the next tag would ship
+git -C C:\repos\.github diff --stat v1.20.1..origin/master
 ```
 
 This is not hypothetical. `v1.16.0` was cut to release `node-version-file` (#51)
@@ -199,10 +199,26 @@ whose renamed inputs were never migrated. That major had sat harmlessly on
 `master` for a week precisely *because* consumers pin tags — tagging is what
 activated it, and `data-gubbins`' `Release` broke on adoption. See DAG-326/DAG-327.
 
+**Tag the merge commit by SHA, never by branch name:**
+
+```powershell
+git -C C:\repos\.github fetch origin --tags
+gh pr view <pins PR> -R caracal-lynx/.github --json mergeCommit --jq .mergeCommit.oid
+git -C C:\repos\.github tag -a vX.Y.Z -m "vX.Y.Z" <that SHA>
+git -C C:\repos\.github rev-parse "vX.Y.Z^{commit}"   # must print the same SHA
+git -C C:\repos\.github push origin vX.Y.Z
+```
+
+`master` and `origin/master` are only as current as your last fetch. `v1.20.0` was
+tagged on `origin/master` 21 seconds after #84 and #85 merged, from a clone that had
+not fetched them, so it shipped without either. Nothing failed. The only symptom was
+two PRs missing from its Release. `v1.20.1` exists to carry them.
+
 Pushing a `v*` tag fires `.github/workflows/release-notes.yml`, which creates a
-GitHub Release listing every PR in the range. Read it after tagging: an
-unexpected PR in that body means the tag shipped more than you thought, and you
-can cut a follow-up before a consumer adopts it.
+GitHub Release listing every PR in the range. Read it after tagging, checking both
+ways: an unexpected PR means the tag shipped more than you thought, and a **missing**
+one means it shipped less. Either way, cut a follow-up tag before a consumer adopts
+it. Never move a published tag.
 
 ## Workflow templates in the UI
 
