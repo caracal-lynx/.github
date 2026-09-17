@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   release:
-    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.19.0
+    uses: caracal-lynx/.github/.github/workflows/node-release.yml@v1.21.0
     with:
       node-version-file: .nvmrc   # commit an .nvmrc — the repo's own file is the source of truth
       package-manager: pnpm
