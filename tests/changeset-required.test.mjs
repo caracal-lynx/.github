@@ -193,3 +193,92 @@ test("private package is never gated", () => {
 test("src/ change still fires on the path pattern", () => {
   required({ [PKG]: sluice(), "packages/sluice/src/a.ts": "a\n" }, { "packages/sluice/src/a.ts": "b\n" }, "src");
 });
+
+// pnpm-lock.yaml as pnpm 11+ writes it: an env document first, then the catalogs block.
+// catalogs: { default: { axios: "^1.17.0" }, legacy: { ... } }
+const lockfile = (catalogs) =>
+  [
+    "---",
+    "lockfileVersion: '9.0'",
+    "",
+    "importers:",
+    "",
+    "  .:",
+    "    configDependencies: {}",
+    "",
+    "---",
+    "lockfileVersion: '9.0'",
+    "",
+    "settings:",
+    "  autoInstallPeers: true",
+    "",
+    "catalogs:",
+    ...Object.entries(catalogs).flatMap(([cat, pkgs]) => [
+      `  ${cat}:`,
+      ...Object.entries(pkgs).flatMap(([name, spec]) => [
+        `    ${name.startsWith("@") ? `'${name}'` : name}:`,
+        `      specifier: ${/^[\^~\d]/.test(spec) ? spec : `'${spec}'`}`,
+        `      version: ${spec.replace(/^[^\d]*/, "").split(" ")[0]}`,
+      ]),
+    ]),
+    "",
+    "importers:",
+    "",
+    "  .: {}",
+    "",
+  ].join("\n");
+const WORKSPACE = "pnpm-workspace.yaml";
+const workspace = (axios) => `packages:\n  - packages/*\ncatalog:\n  # comment\n  axios: ${axios}\n`;
+const catalogPr = (pkg, from, to, catalog = "default") => [
+  { [PKG]: pkg, [WORKSPACE]: workspace(from), [LOCK]: lockfile({ [catalog]: { axios: from } }) },
+  { [WORKSPACE]: workspace(to), [LOCK]: lockfile({ [catalog]: { axios: to } }) },
+];
+
+test("catalog major on a catalogued runtime dependency", () => {
+  required(...catalogPr(sluice({ axios: "catalog:" }), "^1.17.0", "^2.0.0"), "catalog: axios ^1 -> ^2");
+  required(...catalogPr(sluice({ axios: "catalog:default" }), "^1.17.0", "^2.0.0"), "catalog:default spelling");
+  required(
+    ...catalogPr(sluice({ axios: "catalog:legacy" }), "~1.5.0", "~1.6.0", "legacy"),
+    "named catalog, tilde minor",
+  );
+  required(
+    ...catalogPr(sluice({}, { optionalDependencies: { axios: "catalog:" } }), "^1.17.0", "^2.0.0"),
+    "optionalDependencies",
+  );
+});
+
+test("catalog major used only by devDependencies", () => {
+  exempt(
+    ...catalogPr(sluice({}, { devDependencies: { axios: "catalog:" } }), "^1.17.0", "^2.0.0"),
+    "devDependencies are not consumer-visible",
+  );
+});
+
+test("catalog major used only by a private package", () => {
+  exempt(
+    ...catalogPr(sluice({ axios: "catalog:" }, { private: true }), "^1.17.0", "^2.0.0"),
+    "private package",
+  );
+});
+
+test("catalog in-range bump", () => {
+  exempt(...catalogPr(sluice({ axios: "catalog:" }), "^1.17.0", "^1.20.0"), "^1.17 -> ^1.20");
+});
+
+test("catalog entry not referenced by the package", () => {
+  exempt(...catalogPr(sluice({ pg: "^8.21.0" }), "^1.17.0", "^2.0.0"), "axios not used");
+});
+
+test("moving a dependency onto the catalog at the same reach", () => {
+  const lock = lockfile({ default: { axios: "^1.20.0" } });
+  exempt(
+    { [PKG]: sluice({ axios: "^1.17.0" }), [WORKSPACE]: workspace("^1.20.0"), [LOCK]: lock },
+    { [PKG]: sluice({ axios: "catalog:" }) },
+    "^1.17.0 -> catalog: (^1.20.0)",
+  );
+  required(
+    { [PKG]: sluice({ axios: "^1.17.0" }), [WORKSPACE]: workspace("^2.0.0"), [LOCK]: lockfile({ default: { axios: "^2.0.0" } }) },
+    { [PKG]: sluice({ axios: "catalog:" }) },
+    "^1.17.0 -> catalog: (^2.0.0)",
+  );
+});
