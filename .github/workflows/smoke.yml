@@ -57,11 +57,26 @@ jobs:
       # fixture is `private: true`, so the surface check skips it, and no path matches
       # '^src/'), but executing it catches a syntax error or a Node incompatibility in
       # that script, which skipping it does not.
-      # ponytail: exercises the script, does not assert its verdict. Asserting would
-      # need a fixture PR engineered to owe a changeset — a test harness for a test.
+      # This exercises the script. The changeset-verdict job below asserts its verdict.
       require-changeset: true
       # require-dist left at its default (true) so the dist assertion is exercised —
       # the fixture's build script writes dist/smoke.txt for exactly that reason.
+
+  changeset-verdict:
+    # The ci job above can only run the changeset step against a private fixture,
+    # where it always passes. This lifts the step's script out of node-ci.yml and
+    # runs it against throwaway repos shaped like real PRs (data-gubbins#210, a
+    # lockfile-only Renovate PR, a devDependency major, ...), asserting pass/fail.
+    name: Changeset verdict
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - run: node --test tests/*.test.mjs
 
   release:
     # Job id `release` forms the `release / Release` context — see the note above.
