@@ -414,24 +414,70 @@ jobs:
           # node, not jq: setup-node has already run, so node is guaranteed here,
           # whereas jq is only an incidental ubuntu-latest convenience. Keys are
           # sorted recursively so a pure reordering of dependencies does not fire.
-          # `dependencies` is deliberately NOT in this list. Measured against 186
-          # package.json commits across the five gated repos: including it fires
-          # on 67 (36%), excluding it on 18 (10%). The extra 49 are almost all
-          # Renovate prod-dep bumps — bot PRs no human will hand-write a changeset
-          # for, which would sit red until someone bypasses the gate. A gate that
-          # routine traffic teaches you to bypass is worse than no gate. Revisit
-          # if Renovate ever generates changesets itself (postUpgradeTasks).
+          #
+          # `dependencies` and `optionalDependencies` are compared by REACH, not
+          # by text: each range is reduced to the part that only a release can
+          # change (^1.2.3 -> "^1", ~1.5.6 -> "~1.5", 0.3.1 -> "=0.3.1").
+          # A range that moves within what the published one already allows
+          # (^1.2.3 -> ^1.4.0) projects identically, so it does not fire;
+          # consumers already resolve the new version through their own
+          # lockfile. A range that moves outside it (^1.x -> ^2.x, ~1.5 -> ~1.6)
+          # differs, and fires, because no consumer can reach that version until
+          # the package is released.
+          #
+          # This replaces a blanket exclusion of `dependencies`, chosen because
+          # text-diffing them fired on 36% of manifest commits, almost all
+          # Renovate in-range bumps. Two things make that cost go away. The pnpm
+          # preset's rangeStrategy is update-lockfile, so in-range updates no
+          # longer touch package.json at all. And the reach projection ignores
+          # the in-range bumps that still do. What is left is exactly the
+          # majors, which the shared config already refuses to auto-merge.
+          # The exclusion was not free: data-gubbins#210 took @duckdb/node-api
+          # 1.x -> 2.x with the gate green, and since the monorepo cutover five
+          # earlier Renovate PRs (#55, #56, #57, #169, #186) shipped runtime
+          # majors with no changeset. They went out unannounced, under whatever
+          # bump the next unrelated changeset happened to carry.
+          #
+          # Prerelease ranges keep their full x.y.z, because npm lets a
+          # prerelease satisfy a range only when its x.y.z matches the
+          # comparator's. So ~1.5.5-r.4 -> ~1.5.6-r is out of reach (#186).
+          # Anything that is not a single comparator (||, hyphen ranges,
+          # workspace:, catalog:, npm:, URLs) falls back to the raw text, so any
+          # edit to it fires.
+          #
+          # peerDependencies stays a plain text diff. Any change to a peer range
+          # changes what consumers must install themselves. Widening one with no
+          # changeset is what broke eribe's install twice (above).
+          #
+          # ponytail: `catalog:` entries resolve from pnpm-workspace.yaml, which
+          # this check does not read. A catalogued runtime dependency (axios, pg,
+          # commander, ...) can take a major with this gate green.
           cat > "${RUNNER_TEMP:-/tmp}/pkg-surface.js" <<'SURFACE'
-          const KEYS = ["peerDependencies", "optionalDependencies",
-                        "exports", "main", "types", "bin", "files"];
+          const KEYS = ["peerDependencies", "exports", "main", "types", "bin", "files"];
+          const REACH_KEYS = ["dependencies", "optionalDependencies"];
           const sort = (v) =>
             Array.isArray(v) ? v.map(sort)
             : v && typeof v === "object"
               ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sort(v[k])]))
               : v;
+          const reach = (spec) => {
+            const m = /^\s*([~^]|>=|=)?\s*v?(\d+)\.(\d+)\.(\d+)(-[0-9A-Za-z.-]+)?\s*$/.exec(spec);
+            if (!m) return spec;
+            const [, op = "=", major, minor, patch, pre] = m;
+            if (pre) return `${op}${major}.${minor}.${patch}-*`;
+            if (op === ">=") return ">=";
+            if (op === "=") return `=${major}.${minor}.${patch}`;
+            if (op === "~") return `~${major}.${minor}`;
+            return major !== "0" ? `^${major}` : minor !== "0" ? `^0.${minor}` : `^0.0.${patch}`;
+          };
           let pkg = {};
           try { pkg = JSON.parse(require("fs").readFileSync(0, "utf8")); } catch {}
           const surface = Object.fromEntries(KEYS.map((k) => [k, pkg[k] ?? null]));
+          for (const k of REACH_KEYS) {
+            surface[k] = pkg[k] && Object.keys(pkg[k]).length
+              ? Object.fromEntries(Object.entries(pkg[k]).map(([name, spec]) => [name, reach(String(spec))]))
+              : null;
+          }
           // engines.node only, not all of engines. npm enforces engines.node on
           // install, so raising the floor is consumer-visible. engines.pnpm (and
           // packageManager) are dev-workflow pins that Renovate bumps constantly
