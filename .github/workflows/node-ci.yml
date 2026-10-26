@@ -442,19 +442,63 @@ jobs:
           # prerelease satisfy a range only when its x.y.z matches the
           # comparator's. So ~1.5.5-r.4 -> ~1.5.6-r is out of reach (#186).
           # Anything that is not a single comparator (||, hyphen ranges,
-          # workspace:, catalog:, npm:, URLs) falls back to the raw text, so any
-          # edit to it fires.
+          # workspace:, npm:, URLs) falls back to the raw text, so any edit to it
+          # fires.
+          #
+          # `catalog:` and `catalog:<name>` specs are resolved to the catalog's
+          # range first, then reduced the same way. The range lives in
+          # pnpm-workspace.yaml, so a catalog major changes no package.json at
+          # all: sluice catalogues nine runtime deps (axios, pg, commander, ...),
+          # and any of them could take a major with this gate green. When the
+          # catalogs differ between base and head, every tracked manifest is
+          # checked, not only the ones the PR touched, so the private skip and
+          # the devDependencies exemption apply to catalog moves unchanged.
+          #
+          # The catalogs are read from pnpm-lock.yaml's `catalogs:` section, not
+          # from pnpm-workspace.yaml. There is no YAML parser here. The workspace
+          # file is hand-written, with comments inside the catalog, quoted keys,
+          # and both `catalog:` and `catalogs: default:` meaning the same thing.
+          # The lockfile is pnpm's own output in one fixed layout (`default`
+          # always spelled out, `specifier:` on its own line), and the
+          # --frozen-lockfile install above fails if its catalogs disagree with
+          # the workspace file, so by this point it is the same data.
           #
           # peerDependencies stays a plain text diff. Any change to a peer range
           # changes what consumers must install themselves. Widening one with no
           # changeset is what broke eribe's install twice (above).
-          #
-          # ponytail: `catalog:` entries resolve from pnpm-workspace.yaml, which
-          # this check does not read. A catalogued runtime dependency (axios, pg,
-          # commander, ...) can take a major with this gate green.
+          cat > "${RUNNER_TEMP:-/tmp}/catalogs.js" <<'CATALOGS'
+          // pnpm-lock.yaml on stdin -> {"<catalog>": {"<package>": "<specifier>"}}.
+          // Only the `catalogs:` block is read: name at 2 spaces, package at 4,
+          // specifier at 6. pnpm 11+ lockfiles hold several `---` documents;
+          // the block can sit in any of them.
+          let text = "";
+          try { text = require("fs").readFileSync(0, "utf8"); } catch {}
+          const unquote = (s) => s.trim().replace(/^(['"])(.*)\1$/, "$2");
+          const out = {};
+          let inBlock = false, cat, pkg;
+          for (const line of text.split(/\r?\n/)) {
+            if (/^catalogs:\s*$/.test(line)) { inBlock = true; continue; }
+            if (!inBlock || !line.trim()) continue;
+            if (!line.startsWith(" ")) { inBlock = false; continue; }
+            let m;
+            if ((m = /^  (\S.*):\s*$/.exec(line))) out[(cat = unquote(m[1]))] = {};
+            else if ((m = /^    (\S.*):\s*$/.exec(line))) pkg = unquote(m[1]);
+            else if ((m = /^      specifier:(.*)$/.exec(line)) && cat && pkg) out[cat][pkg] = unquote(m[1]);
+          }
+          console.log(JSON.stringify(out));
+          CATALOGS
+
           cat > "${RUNNER_TEMP:-/tmp}/pkg-surface.js" <<'SURFACE'
           const KEYS = ["peerDependencies", "exports", "main", "types", "bin", "files"];
           const REACH_KEYS = ["dependencies", "optionalDependencies"];
+          // CATALOGS: path to catalogs.js output for the same side of the diff.
+          let catalogs = {};
+          try { catalogs = JSON.parse(require("fs").readFileSync(process.env.CATALOGS, "utf8")); } catch {}
+          const resolve = (name, spec) => {
+            const m = /^catalog:(.*)$/.exec(spec.trim());
+            if (!m) return spec;
+            return catalogs[m[1].trim() || "default"]?.[name] ?? spec;
+          };
           const sort = (v) =>
             Array.isArray(v) ? v.map(sort)
             : v && typeof v === "object"
@@ -475,7 +519,7 @@ jobs:
           const surface = Object.fromEntries(KEYS.map((k) => [k, pkg[k] ?? null]));
           for (const k of REACH_KEYS) {
             surface[k] = pkg[k] && Object.keys(pkg[k]).length
-              ? Object.fromEntries(Object.entries(pkg[k]).map(([name, spec]) => [name, reach(String(spec))]))
+              ? Object.fromEntries(Object.entries(pkg[k]).map(([name, spec]) => [name, reach(resolve(name, String(spec)))]))
               : null;
           }
           // engines.node only, not all of engines. npm enforces engines.node on
@@ -489,11 +533,30 @@ jobs:
 
           SURFACE_JS="${RUNNER_TEMP:-/tmp}/pkg-surface.js"
 
+          # Catalogs on each side of the diff. No lockfile (npm, or a pnpm repo
+          # without catalogs) yields {} on both sides, which changes nothing.
+          CATALOGS_BEFORE="${RUNNER_TEMP:-/tmp}/catalogs-before.json"
+          CATALOGS_AFTER="${RUNNER_TEMP:-/tmp}/catalogs-after.json"
+          git show "origin/${BASE}:pnpm-lock.yaml" 2>/dev/null \
+            | node "${RUNNER_TEMP:-/tmp}/catalogs.js" > "$CATALOGS_BEFORE" || true
+          if [ -f pnpm-lock.yaml ]; then
+            node "${RUNNER_TEMP:-/tmp}/catalogs.js" < pnpm-lock.yaml > "$CATALOGS_AFTER"
+          else
+            echo '{}' > "$CATALOGS_AFTER"
+          fi
+
           # Every package.json the PR touches. A single-package repo yields exactly
           # the root manifest, so this is byte-identical to the previous behaviour
           # for every existing consumer.
           MANIFESTS=$(git diff --name-only "origin/${BASE}...HEAD" \
                       | grep -E '(^|/)package\.json$' || true)
+
+          # A catalog change reaches every manifest that references the entry,
+          # and none of those manifests is in the diff. Check them all; the reach
+          # projection decides which ones actually moved.
+          if ! cmp -s "$CATALOGS_BEFORE" "$CATALOGS_AFTER"; then
+            MANIFESTS=$(printf '%s\n%s\n' "$MANIFESTS" "$(git ls-files -- 'package.json' '**/package.json')" | sort -u)
+          fi
 
           while IFS= read -r manifest; do
             [ -n "$manifest" ] || continue
@@ -508,8 +571,8 @@ jobs:
 
             # Empty stdin (manifest absent on base, e.g. a newly added package)
             # yields all-nulls rather than crashing the step.
-            before=$(git show "origin/${BASE}:${manifest}" 2>/dev/null | node "$SURFACE_JS" || true)
-            after=$(node "$SURFACE_JS" < "$manifest")
+            before=$(git show "origin/${BASE}:${manifest}" 2>/dev/null | CATALOGS="$CATALOGS_BEFORE" node "$SURFACE_JS" || true)
+            after=$(CATALOGS="$CATALOGS_AFTER" node "$SURFACE_JS" < "$manifest")
 
             if [ "$before" != "$after" ]; then
               REASONS+=("published fields changed in ${manifest}")
