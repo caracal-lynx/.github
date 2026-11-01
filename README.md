@@ -144,9 +144,10 @@ jobs:
   may need manual approval before CI can run on them.
   **It is `RELEASER_CLIENT_ID`, not `RELEASER_APP_ID`** — `create-github-app-token`
   deprecated the `app-id` input, and both the mint step and the preflight that gates
-  it moved to the client id on 2026-08-28 (DAG 210). `RELEASER_APP_ID` still exists
-  only so consumers pinned below `v1.17.1` keep working; it will be deleted once no
-  reachable pin references it.
+  it moved to the client id on 2026-08-28 (DAG-210). `RELEASER_APP_ID` was deleted
+  on 2026-11-01, once the only consumer pin (`data-gubbins`, `v1.22.0`) and the
+  workflow template (`v1.21.0`) were both past `v1.17.1`. A pin below `v1.17.1`
+  now mints no App token and falls back to `GITHUB_TOKEN`.
 
 **Registry read auth:** both `node-ci.yml` and `node-release.yml` always pass
 the inherited `NPM_READ_TOKEN` to every install/precheck step, so restricted
