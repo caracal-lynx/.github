@@ -172,6 +172,11 @@ This pulls in the shared defaults: Monday-morning schedule, grouping for
 **no** automerge for runtime deps (they ship to users — manual review),
 and immediate firing on vulnerability alerts.
 
+It also carries the fleet-wide version holds, so no repo can miss one:
+TypeScript `<7`, and Node `<25` for both the runtime (`.nvmrc`, setup-node)
+and `@types/node`. The Node pair moves together, and only as a deliberate
+fleet change — the rule descriptions give the order.
+
 ## Pinning & versioning
 
 - **First-party GitHub Actions** (`actions/checkout`, `actions/setup-node`,

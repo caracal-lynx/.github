@@ -31,6 +31,17 @@
       "description": "Fleet-wide hold on v6. Block all of TypeScript 7 (native compiler), open-ended — no auto-resume at 7.1. Decision 2026-07-10; lift this pin manually when we choose to adopt a 7.x line. Hoisted from per-repo renovate.json into the shared preset (DAG) so no repo can miss it (sluice-client-eribe drift, 2026-07-24)."
     },
     {
+      "matchDepNames": ["node"],
+      "matchDatasources": ["node-version"],
+      "allowedVersions": "<25",
+      "description": "Fleet-wide hold on the Node 24 runtime (.nvmrc, .node-version, setup-node `node-version`). Node 26 went LTS on 2026-10-28 and Renovate raised data-gubbins#218 the next day, but moving runtime is a fleet decision, not a per-repo PR: every published @caracal-lynx package declares `engines.node >=24.x` and every consumer runs 24, so a repo that develops and tests only on 26 stops exercising the floor it promises. Node 24 is LTS until April 2028, so there is no pressure. Scoped by depName + datasource rather than matchPackageNames on purpose: data-gubbins' scripts/check-renovate-holds.mjs reads `matchPackageNames` holds from THIS file and fails CI when one matches no npm manifest range, which a runtime version never does. The datasource scope also keeps the rule off Docker `node` image tags, where a semver-style ceiling is not valid docker versioning. Binds fully: Renovate is the only thing that edits these files. LIFT together with the @types/node rule below, in this order: consumers' runtimes, then engines.node in a changeset (breaking for consumers), then this ceiling to <27."
+    },
+    {
+      "matchPackageNames": ["@types/node"],
+      "allowedVersions": "<25",
+      "description": "@types/node tracks the LOWEST Node the fleet supports, not the runtime a repo happens to develop on. With the types a major ahead of engines.node, code that calls a Node 25/26-only API type-checks and then fails at runtime for a consumer on 24, and nothing in CI notices because CI runs the newer runtime too. data-gubbins#218 bundled exactly that (@types/node ^24 -> ^26) with the runtime bump, and sluice-client-eribe#169 merged it on its own while that repo still runs 24.22.1. This rule does NOT revert #169: Renovate never downgrades, so a repo already above the ceiling has to come back to ^24 by hand. It binds only where the declared range already excludes 25 (^24.x does), and data-gubbins' check-renovate-holds.mjs asserts that on every run. LIFT with the runtime rule above, when engines.node moves."
+    },
+    {
       "description": "peerDependencies: widen ranges instead of bumping the floor — the global rangeStrategy 'bump' would narrow the supported range (e.g. typescript >=5.9.3 → >=6.0.3), breaking consumers for no benefit (eslint-config#22, 2026-07-16)",
       "matchDepTypes": ["peerDependencies"],
       "rangeStrategy": "widen"
