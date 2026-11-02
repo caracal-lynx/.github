@@ -3,8 +3,12 @@
   "description": [
     "Shared pnpm preset for Caracal Lynx repos (DAG-144). Extend it AFTER the base preset so these settings win: \"extends\": [\"local>caracal-lynx/.github:renovate-config\", \"local>caracal-lynx/.github:renovate-config-pnpm\"]. Carries the pnpm-specific Renovate settings the npm-tuned base preset can't.",
     "rangeStrategy 'update-lockfile': the base preset uses 'bump', which rewrites caret floors in package.json even for in-range updates. On pnpm workspaces that desyncs the importer specifier in pnpm-lock.yaml for non-root members, so CI's `pnpm install --frozen-lockfile` fails with ERR_PNPM_OUTDATED_LOCKFILE. 'update-lockfile' keeps package.json ranges fixed and only updates the lock file.",
-    "minimumReleaseAge '3 days': pnpm 11 enables a 1-day minimumReleaseAge by default and re-validates it on `pnpm install --frozen-lockfile`, so a PR raised the instant a release drops fails CI with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION until it ages out. Holding Renovate's own PRs for 3 days (> pnpm's 24h, with margin for CI timing) means a PR only opens once it can pass. Use minimumReleaseAgeExclude per-repo for urgent security patches."
+    "minimumReleaseAge '3 days': pnpm 11 enables a 1-day minimumReleaseAge by default and re-validates it on `pnpm install --frozen-lockfile`, so a PR raised the instant a release drops fails CI with ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION until it ages out. Holding Renovate's own PRs for 3 days (> pnpm's 24h, with margin for CI timing) means a PR only opens once it can pass. Use minimumReleaseAgeExclude per-repo for urgent security patches.",
+    "lockFileMaintenance.minimumReleaseAge null: Renovate cannot age a lock file maintenance update. The update delegates to pnpm, so it carries no releaseTimestamp (the docs' update-type table marks lockFileMaintenance as not possible), and since Renovate 42 minimumReleaseAgeBehaviour defaults to 'timestamp-required', which counts a missing timestamp as not yet aged. In 44.188.2 the branch worker (lib/workers/repository/update/branch/index.ts) therefore sets renovate/stability-days to pending on every lock file maintenance PR, forever: measured on all five such PRs of Oct-Nov 2026 in eribe-client-portal, data-gubbins and sluice-client-eribe. The check was never a control here, because it had nothing to measure. The age gate for lock file maintenance is pnpm's own: minimumReleaseAge in pnpm-workspace.yaml applies when Renovate regenerates the lock file and again on CI's --frozen-lockfile install. Scoped to lock file maintenance only; every other update type keeps the 3-day hold above."
   ],
   "rangeStrategy": "update-lockfile",
-  "minimumReleaseAge": "3 days"
+  "minimumReleaseAge": "3 days",
+  "lockFileMaintenance": {
+    "minimumReleaseAge": null
+  }
 }
